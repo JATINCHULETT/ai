@@ -19,12 +19,12 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# -- Venv packages -----------------------------------------------------------
+# -- Venv packages (local dev only) ------------------------------------------
 VENV_SITE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "crewai-project", "venv", "Lib", "site-packages",
 )
-if VENV_SITE not in sys.path:
+if os.path.isdir(VENV_SITE) and VENV_SITE not in sys.path:
     sys.path.insert(0, VENV_SITE)
 
 import litellm

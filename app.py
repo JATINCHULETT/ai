@@ -21,12 +21,12 @@ if os.path.isfile(_env_path):
                 _k, _v = _line.split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
-# ── Venv packages ──────────────────────────────────────────────────────────────
+# ── Venv packages (local dev only) ───────────────────────────────────────────────
 VENV_SITE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "crewai-project", "venv", "Lib", "site-packages",
 )
-if VENV_SITE not in sys.path:
+if os.path.isdir(VENV_SITE) and VENV_SITE not in sys.path:
     sys.path.insert(0, VENV_SITE)
 
 from flask import Flask, render_template, request, Response, jsonify
@@ -330,4 +330,4 @@ if __name__ == "__main__":
     print("  ║  Product Alignment System — Web UI          ║")
     print("  ║  Open: http://localhost:5000                 ║")
     print("  ╚══════════════════════════════════════════════╝\n")
-    app.run(debug=False, port=5000, threaded=True)
+    app.run(debug=False, port=int(os.environ.get("PORT", 5000)), host="0.0.0.0", threaded=True)
