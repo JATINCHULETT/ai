@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alignment Bridge — Product ↔ Dev Coherence Validator</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0c10;--surface:#13161d;--surface2:#1a1e28;--border:#252a36;
+  --text:#e1e4ed;--muted:#6b7084;--accent:#00cec9;--accent2:#81ecec;
+  --success:#00b894;--warning:#fdcb6e;--danger:#e17055;--cyan:#6c5ce7;
+  --green:#55efc4;--orange:#e17055;--pink:#fd79a8;--code-bg:#0d1017;--radius:12px;
+  --gold:#f9ca24;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;overflow-x:hidden}
+
+/* ═══ HEADER ═══ */
+header{text-align:center;padding:1.2rem 1.5rem 0}
+header h1{font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,var(--gold),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+header p{color:var(--muted);font-size:0.82rem;margin-top:0.15rem}
+.arch-badge{display:inline-block;margin-top:0.25rem;padding:0.15rem 0.6rem;border-radius:12px;font-size:0.68rem;font-weight:600;background:rgba(249,202,36,0.12);color:var(--gold)}
+
+/* ═══ NAV LINKS ═══ */
+.nav-links{display:flex;gap:0.5rem;margin:0.5rem 1.5rem}
+.nav-link{padding:0.3rem 0.8rem;font-size:0.78rem;color:var(--muted);border:1px solid var(--border);border-radius:6px;text-decoration:none;transition:color 0.2s,border-color 0.2s}
+.nav-link:hover{color:var(--accent2);border-color:var(--accent)}
+
+/* ═══ INPUT STRIP ═══ */
+.input-strip{max-width:900px;margin:0.8rem auto 0;padding:0 1.5rem}
+.input-info{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.8rem 1rem;display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap}
+.input-label{font-size:0.72rem;color:var(--muted);text-transform:uppercase;font-weight:600;letter-spacing:0.05em}
+.input-value{font-size:0.82rem;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.input-badge{font-size:0.75rem;font-weight:700;padding:0.2rem 0.5rem;border-radius:6px}
+.input-badge.prd{background:rgba(0,184,148,0.15);color:var(--success)}
+.input-badge.dev{background:rgba(108,92,231,0.15);color:var(--cyan)}
+.btn-run{background:linear-gradient(135deg,var(--gold),#e17055);color:#fff;border:none;border-radius:8px;padding:0.55rem 1.4rem;font-size:0.88rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity 0.2s}
+.btn-run:hover{opacity:0.9}
+.btn-run:disabled{opacity:0.3;cursor:not-allowed}
+
+/* ═══ TIMER BAR ═══ */
+.timer-bar{display:none;max-width:900px;margin:0.5rem auto 0;padding:0 1.5rem}
+.timer-bar.visible{display:block}
+.timer-inner{display:flex;align-items:center;gap:0.6rem;font-size:0.78rem;color:var(--muted)}
+.timer-inner .progress-track{flex:1;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden}
+.timer-inner .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--orange));border-radius:2px;transition:width 0.5s ease}
+
+/* ═══ FLOWCHART ═══ */
+.flow-area{display:none;padding:0.8rem;overflow-x:auto}
+.flow-area.visible{display:block}
+#flowSvg{margin:0 auto;display:block}
+.fn-box{fill:var(--surface);stroke:var(--border);stroke-width:1.5;rx:10;cursor:pointer;transition:fill 0.3s,stroke 0.3s}
+.fn-label{fill:var(--muted);font-size:10px;font-weight:600;pointer-events:none;text-anchor:middle}
+.fn-num{fill:var(--border);font-size:9px;pointer-events:none;text-anchor:middle}
+.fn-box.active{fill:#2a2510;stroke:var(--gold);stroke-width:2;animation:nodePulse 1.5s ease infinite}
+.fn-box.active ~ .fn-label{fill:var(--gold)}
+.fn-box.done{fill:#0c261f;stroke:var(--success);stroke-width:2}
+.fn-box.done ~ .fn-label{fill:var(--success)}
+.fn-box.error{fill:#2a1515;stroke:var(--danger);stroke-width:2}
+@keyframes nodePulse{0%,100%{filter:drop-shadow(0 0 4px rgba(249,202,36,0.3))}50%{filter:drop-shadow(0 0 10px rgba(249,202,36,0.5))}}
+.flow-arrow{stroke:var(--border);stroke-width:1.5;fill:none;marker-end:url(#arr-idle)}
+.flow-arrow.active{stroke:var(--gold);stroke-width:2;marker-end:url(#arr-act)}
+.flow-arrow.done{stroke:var(--success);stroke-width:1.5;marker-end:url(#arr-done)}
+
+/* ═══ ALIGNMENT GAUGE ═══ */
+.gauge-panel{display:none;max-width:900px;margin:1rem auto;padding:0 1.5rem}
+.gauge-panel.visible{display:block}
+.gauge-container{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;text-align:center}
+.gauge-score{font-size:3rem;font-weight:800;margin:0.2rem 0}
+.gauge-label{font-size:0.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.06em}
+.gauge-bar-track{width:100%;max-width:500px;height:14px;background:var(--surface2);border-radius:7px;margin:0.5rem auto;overflow:hidden;position:relative}
+.gauge-bar-fill{height:100%;border-radius:7px;transition:width 1.5s ease}
+.gauge-bar-threshold{position:absolute;top:0;height:100%;width:2px;background:var(--text);opacity:0.5}
+.gauge-verdict{display:inline-block;padding:0.2rem 0.8rem;border-radius:8px;font-size:0.82rem;font-weight:700;margin-top:0.5rem}
+.gauge-verdict.aligned{background:rgba(0,184,148,0.15);color:var(--success)}
+.gauge-verdict.partial{background:rgba(253,203,110,0.15);color:var(--warning)}
+.gauge-verdict.misaligned{background:rgba(225,112,85,0.15);color:var(--danger)}
+
+/* Sub-scores */
+.sub-scores{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;margin-top:0.8rem}
+.sub-score{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.7rem;min-width:130px;text-align:center}
+.sub-score-name{font-size:0.68rem;color:var(--muted);font-weight:600;text-transform:uppercase}
+.sub-score-bar{width:100%;height:6px;background:var(--bg);border-radius:3px;margin:0.2rem 0;overflow:hidden}
+.sub-score-fill{height:100%;border-radius:3px;transition:width 1s ease}
+.sub-score-value{font-size:0.85rem;font-weight:700}
+
+/* ═══ RECOMMENDATION BANNER ═══ */
+.rec-banner{display:none;max-width:900px;margin:0.5rem auto;padding:0 1.5rem}
+.rec-banner.visible{display:block}
+.rec-inner{border-radius:var(--radius);padding:0.8rem 1.2rem;display:flex;align-items:center;gap:0.8rem}
+.rec-inner.accept{background:rgba(0,184,148,0.08);border:1px solid rgba(0,184,148,0.3)}
+.rec-inner.revise_dev{background:rgba(253,203,110,0.08);border:1px solid rgba(253,203,110,0.3)}
+.rec-inner.revisit_product{background:rgba(225,112,85,0.08);border:1px solid rgba(225,112,85,0.3)}
+.rec-inner.escalate{background:rgba(225,112,85,0.12);border:1px solid rgba(225,112,85,0.5)}
+.rec-icon{font-size:1.5rem;flex-shrink:0}
+.rec-text{flex:1}
+.rec-title{font-size:0.92rem;font-weight:700}
+.rec-desc{font-size:0.78rem;color:var(--muted);margin-top:0.15rem}
+.rec-action{font-size:0.72rem;font-weight:600;margin-top:0.3rem}
+.rec-action.accept{color:var(--success)}
+.rec-action.revise{color:var(--warning)}
+.rec-action.revisit{color:var(--orange)}
+.rec-action.escalate{color:var(--danger)}
+
+/* ═══ DEVIATION TABLE ═══ */
+.dev-table-panel{display:none;max-width:900px;margin:0.5rem auto;padding:0 1.5rem}
+.dev-table-panel.visible{display:block}
+.dev-table-panel h3{font-size:0.9rem;font-weight:700;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem}
+.dev-table{width:100%;border-collapse:collapse;font-size:0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.dev-table th,.dev-table td{padding:0.4rem 0.6rem;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03)}
+.dev-table th{background:var(--surface2);color:var(--accent2);font-weight:700;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em}
+.dev-table tr:last-child td{border-bottom:none}
+.status-pill{display:inline-block;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:700;text-transform:uppercase}
+.status-pill.aligned{background:rgba(0,184,148,0.15);color:var(--success)}
+.status-pill.drifted{background:rgba(253,203,110,0.15);color:var(--warning)}
+.status-pill.compromised{background:rgba(225,112,85,0.15);color:var(--orange)}
+.status-pill.violated{background:rgba(225,112,85,0.25);color:var(--danger)}
+.status-pill.missing{background:rgba(107,112,132,0.15);color:var(--muted)}
+.risk-pill{display:inline-block;padding:0.1rem 0.35rem;border-radius:4px;font-size:0.65rem;font-weight:700;text-transform:uppercase}
+.risk-pill.low{color:var(--success)}
+.risk-pill.medium{color:var(--warning)}
+.risk-pill.high{color:var(--orange)}
+.risk-pill.critical{color:var(--danger);background:rgba(225,112,85,0.15)}
+
+/* ═══ RISK SUMMARY ═══ */
+.risk-summary{display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap}
+.risk-count{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.3rem 0.6rem;display:flex;align-items:center;gap:0.3rem;font-size:0.75rem}
+.risk-dot{width:10px;height:10px;border-radius:50%}
+.risk-dot.critical{background:var(--danger)}
+.risk-dot.high{background:var(--orange)}
+.risk-dot.medium{background:var(--warning)}
+.risk-dot.low{background:var(--success)}
+.risk-val{font-weight:700}
+
+/* ═══ FULL REPORT ═══ */
+.report-panel{display:none;max-width:900px;margin:0.5rem auto;padding:0 1.5rem}
+.report-panel.visible{display:block}
+.report-panel h3{font-size:0.9rem;font-weight:700;margin-bottom:0.5rem}
+.report-viewer{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.2rem;max-height:600px;overflow-y:auto;font-size:0.82rem;line-height:1.7}
+.report-viewer h1,.report-viewer h2,.report-viewer h3,.report-viewer h4{color:var(--gold);margin:0.8rem 0 0.3rem;font-weight:700;border-bottom:1px solid var(--border);padding-bottom:0.2rem}
+.report-viewer h1{font-size:1.15rem}.report-viewer h2{font-size:1rem}.report-viewer h3{font-size:0.92rem}
+.report-viewer code{background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:0.1rem 0.35rem;font-size:0.78rem;font-family:'Cascadia Code',monospace}
+.report-viewer pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem;overflow-x:auto;font-size:0.72rem;margin:0.4rem 0}
+.report-viewer table{width:100%;border-collapse:collapse;margin:0.5rem 0;font-size:0.78rem}
+.report-viewer th,.report-viewer td{border:1px solid var(--border);padding:0.35rem 0.6rem;text-align:left}
+.report-viewer th{background:var(--surface2);color:var(--gold);font-weight:600}
+.report-viewer ul,.report-viewer ol{margin:0.3rem 0 0.3rem 1.2rem}
+.report-viewer li{margin:0.1rem 0}
+.report-viewer blockquote{border-left:3px solid var(--gold);padding:0.3rem 0.8rem;margin:0.4rem 0;background:rgba(249,202,36,0.05);color:var(--muted)}
+.report-viewer hr{border:none;border-top:1px solid var(--border);margin:0.6rem 0}
+.report-viewer strong{color:var(--gold)}
+
+/* ═══ STATS BAR ═══ */
+.stats-bar{display:none;max-width:900px;margin:0.5rem auto;padding:0 1.5rem}
+.stats-bar.visible{display:block}
+.stats-inner{display:flex;flex-wrap:wrap;gap:0.6rem;justify-content:center}
+.stat-pill{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.35rem 0.75rem;font-size:0.75rem;display:flex;align-items:center;gap:0.35rem}
+.stat-pill .stat-label{color:var(--muted)}
+.stat-pill .stat-value{color:var(--gold);font-weight:700}
+
+/* ═══ MODAL ═══ */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100}
+.modal-overlay.open{display:block}
+.modal-panel{position:fixed;top:0;right:-500px;width:460px;max-width:92vw;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:101;transition:right 0.35s ease;display:flex;flex-direction:column;overflow:hidden}
+.modal-panel.open{right:0}
+.modal-head{padding:1rem 1.2rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.8rem}
+.modal-head-num{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;color:#fff}
+.modal-head-num.phase-1{background:var(--gold);color:#333}
+.modal-head-num.phase-2{background:var(--orange)}
+.modal-head-num.phase-3{background:var(--pink)}
+.modal-close{margin-left:auto;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;padding:0.3rem 0.6rem;font-size:0.8rem}
+.modal-close:hover{color:var(--text);border-color:var(--text)}
+.modal-title{font-size:1.05rem;font-weight:700}
+.modal-sub{color:var(--muted);font-size:0.75rem;margin-top:0.15rem}
+.modal-status{display:inline-block;padding:0.15rem 0.5rem;border-radius:6px;font-size:0.68rem;font-weight:600;margin-top:0.3rem}
+.modal-status.working{background:rgba(249,202,36,0.15);color:var(--gold)}
+.modal-status.completed{background:rgba(0,184,148,0.15);color:var(--success)}
+.modal-status.waiting{background:rgba(107,112,132,0.12);color:var(--muted)}
+.modal-status.failed{background:rgba(225,112,85,0.15);color:var(--danger)}
+.modal-body{flex:1;overflow-y:auto;padding:1rem 1.2rem}
+.modal-section{margin-bottom:1rem}
+.modal-section-title{font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem}
+.modal-code{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem;font-family:'Cascadia Code',Consolas,monospace;font-size:0.72rem;white-space:pre-wrap;word-break:break-word;color:var(--text);max-height:250px;overflow-y:auto;line-height:1.5}
+.typing-cursor{display:inline-block;width:6px;height:12px;background:var(--gold);animation:blink 0.8s step-end infinite;vertical-align:middle;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ═══ PIPELINE ARROWS (visual) ═══ */
+.pipeline-vis{display:none;max-width:900px;margin:0.5rem auto;padding:0 1.5rem}
+.pipeline-vis.visible{display:flex;align-items:center;justify-content:center;gap:0em}
+.pipeline-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem 0.8rem;text-align:center;min-width:130px;position:relative}
+.pipeline-box .pb-label{font-size:0.68rem;color:var(--muted);text-transform:uppercase;font-weight:600}
+.pipeline-box .pb-name{font-size:0.82rem;font-weight:700;color:var(--text);margin-top:0.1rem}
+.pipeline-box.product{border-color:var(--success);background:rgba(0,184,148,0.05)}
+.pipeline-box.product .pb-name{color:var(--success)}
+.pipeline-box.bridge{border-color:var(--gold);background:rgba(249,202,36,0.05);transform:scale(1.05)}
+.pipeline-box.bridge .pb-name{color:var(--gold)}
+.pipeline-box.dev{border-color:var(--cyan);background:rgba(108,92,231,0.05)}
+.pipeline-box.dev .pb-name{color:var(--cyan)}
+.pipeline-arrow{font-size:1.3rem;color:var(--border);padding:0 0.4rem}
+.pipeline-arrow.active{color:var(--gold);animation:arrowPulse 1s ease infinite}
+@keyframes arrowPulse{0%,100%{opacity:0.4}50%{opacity:1}}
+
+/* ═══ NEXT SECTION ═══ */
+.next-section{display:none;max-width:900px;margin:1.5rem auto;padding:0 1.5rem}
+.next-section.visible{display:block;animation:fadeUp 0.6s ease}
+.next-inner{background:linear-gradient(135deg,rgba(249,202,36,0.06),rgba(0,184,148,0.06));border:1.5px solid rgba(249,202,36,0.3);border-radius:16px;padding:2rem 2rem 1.5rem;text-align:center}
+.next-badge{display:inline-block;padding:0.25rem 1rem;border-radius:20px;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;background:rgba(0,184,148,0.15);color:var(--success);margin-bottom:0.6rem}
+.next-title{font-size:1.25rem;font-weight:800;background:linear-gradient(135deg,var(--gold),var(--success));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:0.3rem}
+.next-desc{font-size:0.82rem;color:var(--muted);max-width:550px;margin:0 auto 1rem}
+.next-desc strong{color:var(--gold)}
+.next-summary{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;margin-bottom:1.2rem}
+.next-summary .ns-pill{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.3rem 0.7rem;font-size:0.75rem;display:flex;align-items:center;gap:0.3rem}
+.next-summary .ns-label{color:var(--muted)}
+.next-summary .ns-value{font-weight:700}
+.next-summary .ns-value.green{color:var(--success)}
+.next-summary .ns-value.gold{color:var(--gold)}
+.next-summary .ns-value.cyan{color:var(--cyan)}
+.next-actions{display:flex;gap:0.8rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.2rem}
+.btn-download{background:linear-gradient(135deg,var(--success),#00b894);color:#fff;border:none;border-radius:10px;padding:0.7rem 1.8rem;font-size:0.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;transition:opacity 0.2s,transform 0.2s}
+.btn-download:hover{opacity:0.9;transform:translateY(-1px)}
+.btn-download-icon{font-size:1.1rem}
+.btn-restart{background:transparent;border:1.5px solid var(--border);color:var(--muted);border-radius:10px;padding:0.65rem 1.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;transition:color 0.2s,border-color 0.2s}
+.btn-restart:hover{color:var(--text);border-color:var(--text)}
+.next-layers{display:flex;align-items:center;justify-content:center;gap:0;margin-top:0.4rem}
+.next-layer{background:var(--surface);border:1px solid var(--success);border-radius:10px;padding:0.4rem 0.8rem;display:flex;align-items:center;gap:0.4rem;font-size:0.78rem}
+.next-layer.done{background:rgba(0,184,148,0.06)}
+.nl-num{width:22px;height:22px;border-radius:50%;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700}
+.nl-name{font-weight:600;color:var(--text)}
+.nl-check{color:var(--success);font-weight:700}
+.next-arrow{color:var(--success);font-size:1.2rem;padding:0 0.3rem}
+</style>
+</head>
+<body>
+
+<div class="nav-links">
+  <a href="/" class="nav-link">← Product Pipeline</a>
+  <a href="/dev" class="nav-link">← Dev Pipeline</a>
+</div>
+
+<header>
+  <h1>⚖ Alignment Bridge</h1>
+  <p>Product ↔ Dev Cross-Layer Coherence Validator</p>
+  <div class="arch-badge">5 Agents · 3 Phases · Intent vs Implementation · Alignment Score 0-100</div>
+</header>
+
+<!-- Pipeline Visualization -->
+<div class="pipeline-vis visible" id="pipelineVis">
+  <div class="pipeline-box product">
+    <div class="pb-label">Layer 1</div>
+    <div class="pb-name">Product MCP</div>
+  </div>
+  <div class="pipeline-arrow" id="pArrow1">→</div>
+  <div class="pipeline-box bridge">
+    <div class="pb-label">Bridge</div>
+    <div class="pb-name">⚖ Alignment</div>
+  </div>
+  <div class="pipeline-arrow" id="pArrow2">→</div>
+  <div class="pipeline-box dev">
+    <div class="pb-label">Layer 2</div>
+    <div class="pb-name">Dev MCP</div>
+  </div>
+</div>
+
+<!-- Input Strip -->
+<div class="input-strip">
+  <div class="input-info">
+    <span class="input-label">Inputs</span>
+    <span class="input-badge prd" id="prdBadge" style="display:none">PRD ✓</span>
+    <span class="input-badge dev" id="devBadge" style="display:none">Dev ✓</span>
+    <span class="input-value" id="inputStatus">Waiting for both Product PRD and Dev output…</span>
+    <button class="btn-run" id="runBtn" onclick="startAlignment()" disabled>Run Alignment Check</button>
+  </div>
+</div>
+
+<!-- Timer bar -->
+<div class="timer-bar" id="timerBar">
+  <div class="timer-inner">
+    <span id="timerText">0.0s</span>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <span id="stepCount">0 / {{ total }}</span>
+  </div>
+</div>
+
+<!-- Flowchart -->
+<div class="flow-area" id="flowArea">
+<svg id="flowSvg" width="900" height="200" viewBox="0 0 900 200">
+<defs>
+  <marker id="arr-idle" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="var(--border)"/></marker>
+  <marker id="arr-act" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="var(--gold)"/></marker>
+  <marker id="arr-done" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="var(--success)"/></marker>
+</defs>
+
+<!-- Phase labels -->
+<text x="190" y="20" fill="var(--muted)" font-size="9" font-weight="700" text-anchor="middle" opacity="0.5">PHASE 1: EXTRACTION</text>
+<text x="490" y="20" fill="var(--muted)" font-size="9" font-weight="700" text-anchor="middle" opacity="0.5">PHASE 2: ANALYSIS</text>
+<text x="790" y="20" fill="var(--muted)" font-size="9" font-weight="700" text-anchor="middle" opacity="0.5">PHASE 3: SYNTHESIS</text>
+
+<!-- Nodes -->
+<rect id="fn-1" class="fn-box" x="30" y="60" width="160" height="50" onclick="openModal(1)"/>
+<text class="fn-num" x="110" y="78">01</text>
+<text class="fn-label" x="110" y="96">Intent Extractor</text>
+
+<rect id="fn-2" class="fn-box" x="220" y="60" width="170" height="50" onclick="openModal(2)"/>
+<text class="fn-num" x="305" y="78">02</text>
+<text class="fn-label" x="305" y="96">Implementation Analyzer</text>
+
+<rect id="fn-3" class="fn-box" x="420" y="40" width="160" height="50" onclick="openModal(3)"/>
+<text class="fn-num" x="500" y="58">03</text>
+<text class="fn-label" x="500" y="76">Deviation Detector</text>
+
+<rect id="fn-4" class="fn-box" x="420" y="110" width="160" height="50" onclick="openModal(4)"/>
+<text class="fn-num" x="500" y="128">04</text>
+<text class="fn-label" x="500" y="146">Risk Assessor</text>
+
+<rect id="fn-5" class="fn-box" x="690" y="70" width="180" height="55" onclick="openModal(5)"/>
+<text class="fn-num" x="780" y="90">05</text>
+<text class="fn-label" x="780" y="110">Alignment Synthesiser</text>
+
+<!-- Arrows -->
+<path id="a-1-3" class="flow-arrow" d="M190,85 L420,65"/>
+<path id="a-2-3" class="flow-arrow" d="M390,85 L420,65"/>
+<path id="a-1-4" class="flow-arrow" d="M190,110 Q300,160 420,135"/>
+<path id="a-2-4" class="flow-arrow" d="M390,110 L420,135"/>
+<path id="a-3-5" class="flow-arrow" d="M580,65 L690,97"/>
+<path id="a-4-5" class="flow-arrow" d="M580,135 L690,97"/>
+</svg>
+</div>
+
+<!-- Alignment Gauge -->
+<div class="gauge-panel" id="gaugePanel">
+  <div class="gauge-container">
+    <div class="gauge-label">Alignment Score</div>
+    <div class="gauge-score" id="gaugeScore">—</div>
+    <div class="gauge-bar-track">
+      <div class="gauge-bar-fill" id="gaugeBar" style="width:0%"></div>
+      <div class="gauge-bar-threshold" id="gaugeThreshold" style="left:{{ threshold }}%"></div>
+    </div>
+    <div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">Threshold: {{ threshold }}/100</div>
+    <div class="gauge-verdict" id="gaugeVerdict" style="display:none"></div>
+    <div class="sub-scores" id="subScores"></div>
+  </div>
+</div>
+
+<!-- Recommendation Banner -->
+<div class="rec-banner" id="recBanner">
+  <div class="rec-inner" id="recInner">
+    <div class="rec-icon" id="recIcon">⚖</div>
+    <div class="rec-text">
+      <div class="rec-title" id="recTitle">Recommendation</div>
+      <div class="rec-desc" id="recDesc"></div>
+      <div class="rec-action" id="recAction"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Deviation Table -->
+<div class="dev-table-panel" id="devTablePanel">
+  <h3>📊 Deviation Table</h3>
+  <div style="overflow-x:auto">
+    <table class="dev-table" id="devTable">
+      <thead><tr><th>#</th><th>Dimension</th><th>Intent</th><th>Implementation</th><th>Status</th><th>Classification</th><th>Risk</th></tr></thead>
+      <tbody id="devTableBody"></tbody>
+    </table>
+  </div>
+  <div class="risk-summary" id="riskSummary"></div>
+</div>
+
+<!-- Stats bar -->
+<div class="stats-bar" id="statsBar">
+  <div class="stats-inner">
+    <div class="stat-pill"><span class="stat-label">Time</span><span class="stat-value" id="statTime">—</span></div>
+    <div class="stat-pill"><span class="stat-label">Agents</span><span class="stat-value" id="statSteps">—</span></div>
+    <div class="stat-pill"><span class="stat-label">Deviations</span><span class="stat-value" id="statDevs">—</span></div>
+    <div class="stat-pill"><span class="stat-label">Score</span><span class="stat-value" id="statScore">—</span></div>
+  </div>
+</div>
+
+<!-- Full Report -->
+<div class="report-panel" id="reportPanel">
+  <h3>📋 Full Alignment Report</h3>
+  <div class="report-viewer" id="reportViewer"></div>
+</div>
+
+<!-- ═══ NEXT / DOWNLOAD SECTION ═══ -->
+<div class="next-section" id="nextSection">
+  <div class="next-inner">
+    <div class="next-badge">✓ ALL 3 LAYERS COMPLETE</div>
+    <h2 class="next-title">Pipeline Complete — Product → Dev → Alignment</h2>
+    <p class="next-desc">Your product idea has been analyzed by <strong>26 AI agents</strong> across 3 layers. Download the full deliverable package below.</p>
+    <div class="next-summary" id="nextSummary"></div>
+    <div class="next-actions">
+      <button class="btn-download" onclick="downloadFullPackage()">
+        <span class="btn-download-icon">📦</span> Download Full Package (.txt)
+      </button>
+      <button class="btn-restart" onclick="window.location.href='/'">
+        🔄 Start New Project
+      </button>
+    </div>
+    <div class="next-layers">
+      <div class="next-layer done"><span class="nl-num">1</span><span class="nl-name">Product PRD</span><span class="nl-check">✓</span></div>
+      <div class="next-arrow">→</div>
+      <div class="next-layer done"><span class="nl-num">2</span><span class="nl-name">Dev Architecture</span><span class="nl-check">✓</span></div>
+      <div class="next-arrow">→</div>
+      <div class="next-layer done"><span class="nl-num">3</span><span class="nl-name">Alignment Check</span><span class="nl-check">✓</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+<div class="modal-panel" id="modalPanel">
+  <div class="modal-head">
+    <div class="modal-head-num" id="modalNum">1</div>
+    <div>
+      <div class="modal-title" id="modalTitle">Agent</div>
+      <div class="modal-sub" id="modalSub">desc</div>
+      <div class="modal-status" id="modalStatus">waiting</div>
+    </div>
+    <button class="modal-close" onclick="closeModal()">✕ Close</button>
+  </div>
+  <div class="modal-body" id="modalBody"></div>
+</div>
+
+<script>
+/* ═══ CONSTANTS + STATE ═══ */
+var STEPS = [
+  {% for s in steps %}
+  {step:{{s.step}}, name:"{{s.name}}", desc:"{{s.desc}}", phase:{{s.phase}}},
+  {% endfor %}
+];
+var TOTAL = {{ total }};
+var THRESHOLD = {{ threshold }};
+var running = false, doneCount = 0;
+var _finished = false, _completedSteps = {};
+var startTime, timerInterval;
+var agentData = {};
+var currentModal = null;
+var prdText = '', devOutput = '';
+
+/* ═══ LOAD DATA FROM localStorage ═══ */
+(function() {
+  var prd = localStorage.getItem('approved_prd') || '';
+  var dev = localStorage.getItem('dev_output') || '';
+  prdText = prd;
+  devOutput = dev;
+  var statuses = [];
+  if (prd) {
+    document.getElementById('prdBadge').style.display = 'inline-block';
+    statuses.push('PRD (' + prd.length + ' chars)');
+  }
+  if (dev) {
+    document.getElementById('devBadge').style.display = 'inline-block';
+    statuses.push('Dev Output (' + dev.length + ' chars)');
+  }
+  if (prd && dev) {
+    document.getElementById('inputStatus').textContent = statuses.join(' + ') + ' — Ready';
+    document.getElementById('runBtn').disabled = false;
+  } else {
+    var missing = [];
+    if (!prd) missing.push('Product PRD');
+    if (!dev) missing.push('Dev Output');
+    document.getElementById('inputStatus').textContent = 'Missing: ' + missing.join(', ') + ' — complete both pipelines first';
+  }
+})();
+
+/* ═══ FLOWCHART HELPERS ═══ */
+function setMarker(el, type) {
+  if (type === 'act') el.setAttribute('marker-end', 'url(#arr-act)');
+  else if (type === 'done') el.setAttribute('marker-end', 'url(#arr-done)');
+  else el.setAttribute('marker-end', 'url(#arr-idle)');
+}
+
+var ARROW_MAP = {
+  1: [], 2: [],
+  3: ['a-1-3', 'a-2-3'],
+  4: ['a-1-4', 'a-2-4'],
+  5: ['a-3-5', 'a-4-5']
+};
+
+function activateNode(step) {
+  var fn = document.getElementById('fn-' + step);
+  if (fn) { fn.classList.remove('done','error'); fn.classList.add('active'); }
+  (ARROW_MAP[step]||[]).forEach(function(id) {
+    var a = document.getElementById(id);
+    if (a) { a.classList.add('active'); setMarker(a, 'act'); }
+  });
+}
+
+function completeNode(step) {
+  var fn = document.getElementById('fn-' + step);
+  if (fn) { fn.classList.remove('active'); fn.classList.add('done'); }
+  (ARROW_MAP[step]||[]).forEach(function(id) {
+    var a = document.getElementById(id);
+    if (a) { a.classList.remove('active'); a.classList.add('done'); setMarker(a, 'done'); }
+  });
+}
+
+function resetFlowchart() {
+  for (var i = 1; i <= TOTAL; i++) {
+    var fn = document.getElementById('fn-' + i);
+    if (fn) fn.setAttribute('class', 'fn-box');
+  }
+  document.querySelectorAll('.flow-arrow').forEach(function(a) {
+    a.setAttribute('class', 'flow-arrow');
+    setMarker(a, 'idle');
+  });
+}
+
+/* ═══ MODAL ═══ */
+function openModal(step) {
+  currentModal = step;
+  var s = STEPS[step - 1];
+  var d = agentData[step] || {};
+  document.getElementById('modalNum').textContent = step;
+  document.getElementById('modalNum').className = 'modal-head-num phase-' + s.phase;
+  document.getElementById('modalTitle').textContent = s.name;
+  document.getElementById('modalSub').textContent = s.desc;
+  var sb = document.getElementById('modalStatus');
+  var status = d.status || 'waiting';
+  sb.className = 'modal-status ' + status;
+  sb.textContent = status === 'working' ? '● Working...' : status === 'completed' ? '✓ Complete' : status === 'failed' ? '✕ Failed' : '○ Waiting';
+  var body = document.getElementById('modalBody');
+  var html = '';
+  if (d.role) html += '<div class="modal-section"><div class="modal-section-title">Role</div><div class="modal-code">' + escHtml(d.role) + '</div></div>';
+  if (d.system_prompt) html += '<div class="modal-section"><div class="modal-section-title">System Prompt</div><div class="modal-code">' + escHtml(d.system_prompt) + '</div></div>';
+  if (d.task) html += '<div class="modal-section"><div class="modal-section-title">Task</div><div class="modal-code">' + escHtml(d.task) + '</div></div>';
+  if (d.context_preview) html += '<div class="modal-section"><div class="modal-section-title">Context (' + (d.context_length || 0) + ' chars)</div><div class="modal-code">' + escHtml(d.context_preview) + '</div></div>';
+  html += '<div class="modal-section"><div class="modal-section-title">Output</div><div class="modal-code" id="modal-output-' + step + '">' + escHtml(d.output || '(waiting...)');
+  if (d.status === 'working') html += '<span class="typing-cursor"></span>';
+  html += '</div></div>';
+  body.innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalPanel').classList.add('open');
+}
+
+function closeModal() {
+  currentModal = null;
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalPanel').classList.remove('open');
+}
+
+function refreshModalIfOpen(step) {
+  if (currentModal === step) openModal(step);
+}
+
+/* ═══ START ALIGNMENT ═══ */
+function startAlignment() {
+  if (!prdText || !devOutput || running) return;
+  running = true; doneCount = 0; agentData = {}; _finished = false; _completedSteps = {};
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runBtn').textContent = 'Analyzing…';
+  document.getElementById('flowArea').classList.add('visible');
+  document.getElementById('timerBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('gaugePanel').classList.remove('visible');
+  document.getElementById('recBanner').classList.remove('visible');
+  document.getElementById('devTablePanel').classList.remove('visible');
+  document.getElementById('reportPanel').classList.remove('visible');
+  document.getElementById('statsBar').classList.remove('visible');
+  document.getElementById('pArrow1').classList.add('active');
+  document.getElementById('pArrow2').classList.add('active');
+  resetFlowchart(); closeModal();
+
+  startTime = performance.now();
+  timerInterval = setInterval(function() {
+    document.getElementById('timerText').textContent = ((performance.now() - startTime) / 1000).toFixed(1) + 's';
+  }, 100);
+
+  fetch('/api/alignment/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({prd: prdText, dev_output: devOutput})
+  }).then(function(response) {
+    var reader = response.body.getReader(), dec = new TextDecoder();
+    var buf = '';
+    function processBuf() {
+      var lines = buf.split('\n'); buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf('data: ') === 0) {
+          try {
+            var m = JSON.parse(lines[i].slice(6));
+            handleEvent(m);
+            if (m.event === 'align_complete' || m.event === 'align_fatal') { finish(); return true; }
+          } catch(e) { console.error('SSE parse error:', e); }
+        }
+      }
+      return false;
+    }
+    function read() {
+      reader.read().then(function(result) {
+        if (result.done) { buf += '\n'; processBuf(); finish(); return; }
+        buf += dec.decode(result.value, {stream: true});
+        if (processBuf()) return;
+        read();
+      });
+    }
+    read();
+  });
+}
+
+/* ═══ EVENT HANDLER ═══ */
+function handleEvent(msg) {
+  var event = msg.event, step = msg.step, data = msg.data;
+  if (step === 0 && event !== 'align_complete' && event !== 'align_fatal' && event !== 'align_pipeline_start') return;
+
+  if (event === 'align_start') {
+    if (!agentData[step]) agentData[step] = {};
+    agentData[step].status = 'working';
+    agentData[step].output = '';
+    activateNode(step);
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'align_agent_info') {
+    var info = JSON.parse(data);
+    var existing = agentData[step] || {};
+    agentData[step] = {
+      role: info.role, system_prompt: info.system_prompt, task: info.task,
+      context_preview: info.context_preview, context_length: info.context_length,
+      status: 'working', output: existing.output || ''
+    };
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'align_output_chunk') {
+    if (!agentData[step]) agentData[step] = {status:'working', output:''};
+    agentData[step].output += data;
+    if (currentModal === step) {
+      var el = document.getElementById('modal-output-' + step);
+      if (el) {
+        el.querySelectorAll('.typing-cursor').forEach(function(c){c.remove();});
+        el.insertAdjacentText('beforeend', data);
+        var cur = document.createElement('span'); cur.className = 'typing-cursor'; el.appendChild(cur);
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }
+
+  if (event === 'align_done') {
+    if (!agentData[step]) agentData[step] = {};
+    agentData[step].status = 'completed';
+    if (data && (!agentData[step].output || agentData[step].output.length < 10)) agentData[step].output = data;
+    completeNode(step);
+    if (!_completedSteps[step]) { _completedSteps[step] = true; doneCount++; }
+    document.getElementById('stepCount').textContent = Math.min(doneCount, TOTAL) + ' / ' + TOTAL;
+    document.getElementById('progressFill').style.width = Math.min(100, doneCount / TOTAL * 100).toFixed(0) + '%';
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'align_retry') {
+    if (agentData[step]) agentData[step].output = 'Retrying… ' + data;
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'align_fatal') {
+    if (agentData[step]) agentData[step].status = 'failed';
+    var fn = document.getElementById('fn-' + step);
+    if (fn) { fn.classList.remove('active'); fn.classList.add('error'); }
+    refreshModalIfOpen(step);
+    /* Show user-visible error */
+    var errMsg = data || 'An unexpected error occurred.';
+    var errDiv = document.createElement('div');
+    errDiv.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);background:#e74c3c;color:#fff;padding:0.8rem 1.5rem;border-radius:8px;z-index:9999;font-size:0.9rem;max-width:80%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+    errDiv.textContent = '\u26A0 Alignment Error: ' + errMsg;
+    document.body.appendChild(errDiv);
+    setTimeout(function() { if (errDiv.parentNode) errDiv.parentNode.removeChild(errDiv); }, 10000);
+  }
+
+  if (event === 'align_complete') {
+    var r = JSON.parse(data);
+    renderResults(r);
+  }
+}
+
+/* ═══ RENDER RESULTS ═══ */
+function renderResults(r) {
+  var score = r.alignment_score || 0;
+  var verdict = r.verdict || 'UNKNOWN';
+  var recommendation = r.recommendation || 'ACCEPT';
+
+  /* Gauge */
+  document.getElementById('gaugePanel').classList.add('visible');
+  document.getElementById('gaugeScore').textContent = score + '/100';
+  document.getElementById('gaugeScore').style.color =
+    score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--danger)';
+
+  var bar = document.getElementById('gaugeBar');
+  bar.style.width = score + '%';
+  bar.style.background = score >= 70
+    ? 'linear-gradient(90deg, var(--success), var(--green))'
+    : score >= 40
+    ? 'linear-gradient(90deg, var(--warning), var(--gold))'
+    : 'linear-gradient(90deg, var(--danger), var(--orange))';
+
+  var vd = document.getElementById('gaugeVerdict');
+  vd.style.display = 'inline-block';
+  if (verdict === 'ALIGNED') { vd.className = 'gauge-verdict aligned'; vd.textContent = '✓ ALIGNED'; }
+  else if (verdict === 'PARTIALLY_ALIGNED') { vd.className = 'gauge-verdict partial'; vd.textContent = '⚠ PARTIALLY ALIGNED'; }
+  else { vd.className = 'gauge-verdict misaligned'; vd.textContent = '✗ MISALIGNED'; }
+
+  /* Sub-scores */
+  var ssContainer = document.getElementById('subScores');
+  ssContainer.innerHTML = '';
+  if (r.sub_scores) {
+    Object.keys(r.sub_scores).forEach(function(key) {
+      var ss = r.sub_scores[key];
+      var pct = ss.max > 0 ? Math.round((ss.points / ss.max) * 100) : 0;
+      var color = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+      ssContainer.innerHTML +=
+        '<div class="sub-score">' +
+        '<div class="sub-score-name">' + escHtml(key) + '</div>' +
+        '<div class="sub-score-bar"><div class="sub-score-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+        '<div class="sub-score-value" style="color:' + color + '">' + ss.points + '/' + ss.max + '</div>' +
+        '</div>';
+    });
+  }
+
+  /* Recommendation Banner */
+  var recBanner = document.getElementById('recBanner');
+  recBanner.classList.add('visible');
+  var recInner = document.getElementById('recInner');
+  var recIcon = document.getElementById('recIcon');
+  var recTitle = document.getElementById('recTitle');
+  var recDesc = document.getElementById('recDesc');
+  var recAction = document.getElementById('recAction');
+
+  var recInfo = {
+    'ACCEPT':          { cls: 'accept',          icon: '✓', title: 'Accept — Proceed to Implementation', desc: 'Product intent and dev architecture are sufficiently aligned.', actionCls: 'accept', actionText: 'Action: Greenlight development' },
+    'REVISE_DEV':      { cls: 'revise_dev',      icon: '⚠', title: 'Revise Dev Architecture', desc: 'Critical misalignments detected. Dev team should redesign flagged components.', actionCls: 'revise', actionText: 'Action: Trigger dev redesign cycle' },
+    'REVISIT_PRODUCT': { cls: 'revisit_product', icon: '🔄', title: 'Revisit Product Scope', desc: 'Product requirements are ambiguous or conflicting. Needs product clarification.', actionCls: 'revisit', actionText: 'Action: Return to product layer for clarification' },
+    'ESCALATE':        { cls: 'escalate',        icon: '🚨', title: 'Escalate — Fundamental Misalignment', desc: 'Product and dev layers have irreconcilable differences. Needs stakeholder decision.', actionCls: 'escalate', actionText: 'Action: Stakeholder review required' },
+  };
+  var ri = recInfo[recommendation] || recInfo['ACCEPT'];
+  recInner.className = 'rec-inner ' + ri.cls;
+  recIcon.textContent = ri.icon;
+  recTitle.textContent = ri.title;
+  recDesc.textContent = ri.desc;
+  recAction.className = 'rec-action ' + ri.actionCls;
+  recAction.textContent = ri.actionText;
+
+  /* Deviation Table */
+  if (r.deviations && r.deviations.length > 0) {
+    document.getElementById('devTablePanel').classList.add('visible');
+    var tbody = document.getElementById('devTableBody');
+    tbody.innerHTML = '';
+    r.deviations.forEach(function(d, idx) {
+      var statusCls = (d.status || '').toLowerCase().replace(/[^a-z]/g, '');
+      var riskCls = (d.risk || '').toLowerCase().replace(/[^a-z]/g, '');
+      tbody.innerHTML +=
+        '<tr>' +
+        '<td>' + (idx + 1) + '</td>' +
+        '<td><strong>' + escHtml(d.dimension) + '</strong></td>' +
+        '<td>' + escHtml(d.intent) + '</td>' +
+        '<td>' + escHtml(d.implementation) + '</td>' +
+        '<td><span class="status-pill ' + statusCls + '">' + escHtml(d.status) + '</span></td>' +
+        '<td>' + escHtml(d.classification) + '</td>' +
+        '<td><span class="risk-pill ' + riskCls + '">' + escHtml(d.risk) + '</span></td>' +
+        '</tr>';
+    });
+  }
+
+  /* Risk Summary */
+  if (r.risk_counts) {
+    var rs = document.getElementById('riskSummary');
+    rs.innerHTML = '';
+    ['critical', 'high', 'medium', 'low'].forEach(function(level) {
+      var count = r.risk_counts[level] || 0;
+      if (count > 0) {
+        rs.innerHTML +=
+          '<div class="risk-count">' +
+          '<span class="risk-dot ' + level + '"></span>' +
+          '<span class="risk-val">' + count + '</span> ' + level.charAt(0).toUpperCase() + level.slice(1) +
+          '</div>';
+      }
+    });
+  }
+
+  /* Full Report */
+  document.getElementById('reportPanel').classList.add('visible');
+  document.getElementById('reportViewer').innerHTML = renderReport(r.alignment_report);
+
+  /* Stats */
+  document.getElementById('statTime').textContent = r.elapsed + 's';
+  document.getElementById('statSteps').textContent = TOTAL;
+  document.getElementById('statDevs').textContent = (r.deviations || []).length;
+  document.getElementById('statScore').textContent = score + '/100';
+  document.getElementById('statsBar').classList.add('visible');
+
+  /* Show Next section */
+  showNextSection(r);
+
+  /* Scroll to gauge */
+  document.getElementById('gaugePanel').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+/* ═══ FINISH ═══ */
+function finish() {
+  if (_finished) return;
+  _finished = true;
+  running = false;
+  clearInterval(timerInterval);
+  var elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+  document.getElementById('timerText').textContent = elapsed + 's';
+  document.getElementById('progressFill').style.width = '100%';
+  document.getElementById('stepCount').textContent = TOTAL + ' / ' + TOTAL;
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('runBtn').textContent = 'Re-run Alignment Check';
+  document.getElementById('pArrow1').classList.remove('active');
+  document.getElementById('pArrow2').classList.remove('active');
+}
+
+/* ═══ RENDER REPORT (Markdown→HTML) ═══ */
+function renderReport(text) {
+  if (!text) return '<p style="color:var(--muted)">No report yet.</p>';
+  var safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var lines = safe.split('\n');
+  var html='', inList=false, inTable=false, inCode=false, codeBlock='';
+  for (var i=0;i<lines.length;i++) {
+    var line=lines[i],trimmed=line.trim();
+    if(trimmed.indexOf('```')===0&&!inCode){if(inList){html+='</ul>';inList=false;}if(inTable){html+='</tbody></table>';inTable=false;}codeBlock='';inCode=true;continue;}
+    if(trimmed==='```'&&inCode){html+='<pre>'+codeBlock+'</pre>';inCode=false;continue;}
+    if(inCode){codeBlock+=line+'\n';continue;}
+    if(/^[-=_*]{3,}$/.test(trimmed)){if(inList){html+='</ul>';inList=false;}if(inTable){html+='</tbody></table>';inTable=false;}html+='<hr>';continue;}
+    if(trimmed.indexOf('|')!==-1&&trimmed.split('|').length>=3){var cells=trimmed.split('|').map(function(c){return c.trim();}).filter(function(c){return c.length>0;});if(cells.every(function(c){return/^[-:]+$/.test(c);}))continue;if(!inTable){html+='<table><tbody>';inTable=true;}var tag=(i+1<lines.length&&lines[i+1].trim().match(/^\|?\s*[-:]+/))? 'th':'td';html+='<tr>'+cells.map(function(c){return '<'+tag+'>'+inl(c)+'</'+tag+'>';}).join('')+'</tr>';continue;}
+    if(inTable&&trimmed.indexOf('|')===-1){html+='</tbody></table>';inTable=false;}
+    if(/^#{1,4}\s/.test(trimmed)){if(inList){html+='</ul>';inList=false;}var lvl=trimmed.match(/^(#+)/)[1].length;html+='<h'+lvl+'>'+inl(trimmed.replace(/^#+\s*/,''))+'</h'+lvl+'>';continue;}
+    if(/^\s*[-*+]\s/.test(line)){if(!inList){html+='<ul>';inList=true;}html+='<li>'+inl(trimmed.replace(/^[-*+]\s+/,''))+'</li>';continue;}
+    if(/^\d+[.)]\s/.test(trimmed)){if(!inList){html+='<ul>';inList=true;}html+='<li>'+inl(trimmed.replace(/^\d+[.)]\s+/,''))+'</li>';continue;}
+    if(inList&&!trimmed){html+='</ul>';inList=false;continue;}
+    if(/^&gt;\s?/.test(trimmed)){html+='<blockquote>'+inl(trimmed.replace(/^&gt;\s?/,''))+'</blockquote>';continue;}
+    if(trimmed){html+='<p>'+inl(trimmed)+'</p>';}
+  }
+  if(inList)html+='</ul>';if(inTable)html+='</tbody></table>';if(inCode)html+='<pre>'+codeBlock+'</pre>';
+  return html;
+}
+function inl(s){s=s.replace(/`([^`]+)`/g,'<code>$1</code>');s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');s=s.replace(/\*([^*]+)\*/g,'<em>$1</em>');return s;}
+function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+
+/* ═══ NEXT SECTION ═══ */
+var _alignmentReport = '';
+function showNextSection(r) {
+  _alignmentReport = r.alignment_report || '';
+  var sec = document.getElementById('nextSection');
+  sec.classList.add('visible');
+
+  var sum = document.getElementById('nextSummary');
+  var prdLen = (localStorage.getItem('approved_prd') || '').length;
+  var devLen = (localStorage.getItem('dev_output') || '').length;
+  var score = r.alignment_score || 0;
+  var verdict = r.verdict || 'UNKNOWN';
+  var devCount = (r.deviations || []).length;
+
+  sum.innerHTML =
+    '<div class="ns-pill"><span class="ns-label">PRD</span><span class="ns-value green">' + Math.round(prdLen/1024) + ' KB</span></div>' +
+    '<div class="ns-pill"><span class="ns-label">Architecture</span><span class="ns-value cyan">' + Math.round(devLen/1024) + ' KB</span></div>' +
+    '<div class="ns-pill"><span class="ns-label">Alignment</span><span class="ns-value gold">' + score + '/100</span></div>' +
+    '<div class="ns-pill"><span class="ns-label">Verdict</span><span class="ns-value ' + (verdict === 'ALIGNED' ? 'green' : 'gold') + '">' + verdict.replace(/_/g,' ') + '</span></div>' +
+    '<div class="ns-pill"><span class="ns-label">Deviations</span><span class="ns-value gold">' + devCount + '</span></div>' +
+    '<div class="ns-pill"><span class="ns-label">Agents Used</span><span class="ns-value green">26</span></div>';
+}
+
+function downloadFullPackage() {
+  var prd = localStorage.getItem('approved_prd') || '(no PRD found)';
+  var dev = localStorage.getItem('dev_output') || '(no dev output found)';
+  var report = _alignmentReport || '(no alignment report found)';
+  var now = new Date().toISOString().slice(0,19).replace(/[T:]/g,'-');
+
+  var content = '=' .repeat(80) + '\n';
+  content += '  AUTONOMOUS AI SOFTWARE COMPANY — FULL DELIVERABLE PACKAGE\n';
+  content += '  Generated: ' + new Date().toLocaleString() + '\n';
+  content += '=' .repeat(80) + '\n\n';
+
+  content += '━'.repeat(80) + '\n';
+  content += '  LAYER 1: PRODUCT REQUIREMENTS DOCUMENT (PRD)\n';
+  content += '  Generated by 10 AI Agents · Quality-Gated · Human-Approved\n';
+  content += '━'.repeat(80) + '\n\n';
+  content += prd + '\n\n';
+
+  content += '━'.repeat(80) + '\n';
+  content += '  LAYER 2: ARCHITECTURE & CODE SCAFFOLDING\n';
+  content += '  Generated by 11 AI Agents · Quality-Gated · CI/CD Ready\n';
+  content += '━'.repeat(80) + '\n\n';
+  content += dev + '\n\n';
+
+  content += '━'.repeat(80) + '\n';
+  content += '  LAYER 3: ALIGNMENT BRIDGE REPORT\n';
+  content += '  Validated by 5 AI Agents · Intent vs Implementation · 0-100 Score\n';
+  content += '━'.repeat(80) + '\n\n';
+  content += report + '\n\n';
+
+  content += '=' .repeat(80) + '\n';
+  content += '  END OF DELIVERABLE PACKAGE\n';
+  content += '=' .repeat(80) + '\n';
+
+  var blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'ai-software-company-output-' + now + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+crewai-project/venv/
+venv/
+.env
+sandbox_projects/
+*.zip

@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Alignment System — Multi-Agent</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0c10;--surface:#13161d;--surface2:#1a1e28;--border:#252a36;
+  --text:#e1e4ed;--muted:#6b7084;--accent:#6c5ce7;--accent2:#a29bfe;
+  --success:#00b894;--warning:#fdcb6e;--danger:#e17055;--cyan:#00cec9;
+  --green:#55efc4;--orange:#e17055;--pink:#fd79a8;--code-bg:#0d1017;--radius:12px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;overflow-x:hidden}
+
+/* ╔══════════════════════════════════════════╗
+   ║          HEADER + INPUT                  ║
+   ╚══════════════════════════════════════════╝ */
+header{text-align:center;padding:1.2rem 1.5rem 0}
+header h1{font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header p{color:var(--muted);font-size:0.82rem;margin-top:0.15rem}
+.arch-badge{display:inline-block;margin-top:0.25rem;padding:0.15rem 0.6rem;border-radius:12px;font-size:0.68rem;font-weight:600;background:rgba(108,92,231,0.12);color:var(--accent2)}
+
+.input-strip{display:flex;gap:0.5rem;max-width:720px;margin:0.8rem auto 0;padding:0 1.5rem}
+.input-strip textarea{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.9rem;color:var(--text);font-size:0.88rem;font-family:inherit;resize:none;min-height:42px}
+.input-strip textarea:focus{outline:none;border-color:var(--accent)}
+.btn-run{background:linear-gradient(135deg,var(--accent),#5a4bd1);color:#fff;border:none;border-radius:8px;padding:0 1.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity 0.2s}
+.btn-run:hover{opacity:0.9}
+.btn-run:disabled{opacity:0.3;cursor:not-allowed}
+
+/* ── Timer bar ─── */
+.timer-bar{display:none;align-items:center;gap:0.7rem;max-width:720px;margin:0.6rem auto 0;padding:0 1.5rem;font-size:0.8rem;color:var(--muted)}
+.timer-bar.visible{display:flex}
+.progress-track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--cyan));transition:width 0.5s ease}
+
+/* ╔══════════════════════════════════════════╗
+   ║      FLOWCHART — THE HERO VIEW          ║
+   ╚══════════════════════════════════════════╝ */
+.flowchart-area{display:none;padding:0.8rem 1rem;position:relative}
+.flowchart-area.visible{display:block}
+
+.fc-canvas{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem 1rem 0.8rem;overflow:visible;position:relative}
+.fc-hint{text-align:center;font-size:0.7rem;color:var(--muted);margin-bottom:0.6rem;opacity:0;transition:opacity 0.5s}
+.fc-hint.show{opacity:1}
+
+/* SVG core */
+svg#flowSvg{width:100%;height:auto;display:block}
+
+/* ── Node styling ── */
+.fc-node{cursor:pointer;transition:filter 0.3s}
+.fc-node:hover{filter:brightness(1.15)}
+.fc-node .node-box{fill:var(--surface2);stroke:var(--border);stroke-width:1.5;rx:10;ry:10;transition:all 0.4s ease}
+.fc-node .node-label{font-size:11.5px;font-weight:600;fill:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;transition:fill 0.3s}
+.fc-node .node-sub{font-size:9px;fill:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;opacity:0.7}
+.fc-node .node-status{font-size:8px;fill:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;text-anchor:middle}
+.fc-node .node-num-badge{font-size:9px;font-weight:700;fill:#fff;font-family:'Segoe UI',system-ui,sans-serif}
+.node-num-circle{transition:fill 0.4s}
+
+/* Phase labels */
+.phase-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;fill:var(--muted);opacity:0.5;font-family:'Segoe UI',system-ui,sans-serif}
+.phase-region{fill:rgba(255,255,255,0.012);stroke:var(--border);stroke-width:1;stroke-dasharray:5 3;rx:14;ry:14}
+
+/* Arrows */
+.fc-arrow{stroke:var(--border);stroke-width:1.8;fill:none;marker-end:url(#ah);transition:stroke 0.4s,stroke-width 0.3s}
+.fc-arrow-fb{stroke:var(--border);stroke-width:1.8;fill:none;stroke-dasharray:7 4;marker-end:url(#ah-fb);transition:stroke 0.4s}
+.fc-label{font-size:9px;fill:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;font-weight:500;transition:fill 0.3s,font-size 0.3s}
+
+/* ── Active states ── */
+.fc-node.active .node-box{fill:rgba(108,92,231,0.12);stroke:var(--accent);stroke-width:2.5;animation:nodePulse 2s ease-in-out infinite}
+.fc-node.active .node-label{fill:var(--accent2)}
+.fc-node.active .node-status{fill:var(--accent2)}
+.fc-node.active .node-num-circle{fill:var(--accent)}
+
+.fc-node.done .node-box{fill:rgba(0,184,148,0.07);stroke:var(--success);stroke-width:2}
+.fc-node.done .node-label{fill:var(--success)}
+.fc-node.done .node-status{fill:var(--success)}
+.fc-node.done .node-num-circle{fill:var(--success)}
+
+.fc-node.error .node-box{stroke:var(--danger);stroke-width:2}
+.fc-node.error .node-label{fill:var(--danger)}
+
+@keyframes nodePulse{
+  0%,100%{filter:drop-shadow(0 0 3px rgba(108,92,231,0.2))}
+  50%{filter:drop-shadow(0 0 16px rgba(108,92,231,0.5))}
+}
+
+/* Arrow states */
+.fc-arrow.active,.fc-arrow-fb.active{stroke:var(--accent);stroke-width:3}
+.fc-arrow.done{stroke:var(--success);stroke-width:2}
+.fc-arrow-fb.done{stroke:var(--success);stroke-width:2}
+.fc-label.active{fill:var(--accent2);font-weight:700;font-size:10px}
+
+/* Animated travelling dot */
+.travel-dot{fill:var(--accent);r:4;opacity:0}
+.travel-dot.running{opacity:1;filter:drop-shadow(0 0 4px var(--accent))}
+
+/* ── Iteration badge on nodes ── */
+.iter-badge{font-size:9px;font-weight:700;fill:#fff;font-family:'Segoe UI',system-ui,sans-serif}
+.iter-badge-bg{fill:var(--warning);rx:6;ry:6;transition:fill 0.3s}
+.iter-badge-bg.approved{fill:var(--success)}
+.iter-badge-bg.rejected{fill:var(--danger)}
+
+/* Iteration counter on feedback arrow */
+.iter-counter{font-size:11px;font-weight:800;fill:var(--warning);font-family:'Segoe UI',system-ui,sans-serif;text-anchor:middle;opacity:0;transition:opacity 0.4s}
+.iter-counter.visible{opacity:1}
+
+/* ── Legend ── */
+.legend-strip{display:flex;flex-wrap:wrap;gap:0.9rem;justify-content:center;padding:0.5rem 0.75rem;font-size:0.68rem;color:var(--muted)}
+.leg-item{display:flex;align-items:center;gap:0.3rem}
+.leg-swatch{width:10px;height:10px;border-radius:50%}
+.leg-line{width:20px;height:2px;border-radius:1px}
+
+/* ╔══════════════════════════════════════════╗
+   ║     AGENT DETAIL MODAL (slide-in)       ║
+   ╚══════════════════════════════════════════╝ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;opacity:0;pointer-events:none;transition:opacity 0.3s ease;backdrop-filter:blur(3px)}
+.modal-overlay.open{opacity:1;pointer-events:auto}
+
+.modal-panel{position:fixed;top:0;right:-560px;width:min(540px,90vw);height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:1001;transition:right 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.5)}
+.modal-panel.open{right:0}
+
+.modal-head{display:flex;align-items:center;gap:0.6rem;padding:1rem 1.25rem;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-head-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;color:#fff;flex-shrink:0}
+.modal-head-num.phase-discovery{background:var(--accent)}
+.modal-head-num.phase-analysis{background:var(--cyan)}
+.modal-head-num.phase-debate{background:#e2b93d}
+.modal-head-num.phase-prd{background:var(--success)}
+.modal-head-num.phase-final{background:var(--pink)}
+.modal-head-info{flex:1;min-width:0}
+.modal-head-title{font-weight:700;font-size:1rem}
+.modal-head-sub{font-size:0.75rem;color:var(--muted)}
+.modal-status{font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:10px;font-weight:600;flex-shrink:0}
+.modal-status.waiting{background:var(--surface2);color:var(--muted)}
+.modal-status.working{background:rgba(108,92,231,0.15);color:var(--accent2)}
+.modal-status.completed{background:rgba(0,184,148,0.12);color:var(--success)}
+.modal-status.failed{background:rgba(225,112,85,0.15);color:var(--danger)}
+.modal-close{background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:0.2rem 0.5rem;border-radius:6px;transition:background 0.2s}
+.modal-close:hover{background:var(--surface2);color:var(--text)}
+
+.modal-body{flex:1;overflow-y:auto;padding:1rem 1.25rem}
+
+/* Data received section */
+.modal-data-flow{margin-bottom:1rem;padding:0.8rem;background:var(--code-bg);border:1px solid var(--border);border-radius:8px}
+.modal-data-flow-title{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;color:var(--cyan);margin-bottom:0.4rem;display:flex;align-items:center;gap:0.4rem}
+.modal-data-flow-title::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan)}
+.data-from-tag{display:inline-block;padding:0.1rem 0.5rem;border-radius:4px;font-size:0.65rem;font-weight:600;margin:0.15rem 0.2rem 0.15rem 0;background:rgba(108,92,231,0.15);color:var(--accent2)}
+.data-from-tag.outgoing{background:rgba(0,184,148,0.12);color:var(--success)}
+
+/* Agent sections */
+.agent-section{margin-bottom:0.8rem}
+.agent-section-label{font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;padding:0.12rem 0.4rem;border-radius:3px;display:inline-block;margin-bottom:0.3rem}
+.lbl-identity{background:rgba(108,92,231,0.15);color:var(--accent2)}
+.lbl-system{background:rgba(0,206,201,0.12);color:var(--cyan)}
+.lbl-task{background:rgba(85,239,196,0.12);color:var(--green)}
+.lbl-debate{background:rgba(253,203,110,0.15);color:var(--warning)}
+.lbl-qg{background:rgba(225,112,85,0.15);color:var(--orange)}
+.lbl-revision{background:rgba(253,121,168,0.12);color:var(--pink)}
+.lbl-output{background:rgba(0,184,148,0.15);color:var(--success)}
+.agent-section-text{color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.018);border-radius:6px;border:1px solid rgba(255,255,255,0.04);font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-size:0.75rem;line-height:1.6}
+.agent-section-text.output-text{color:var(--text);max-height:none;min-height:60px}
+
+.typing-cursor{display:inline-block;width:2px;height:1em;background:var(--accent);animation:blink 0.7s step-end infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+
+/* ── Sends data to section ── */
+.modal-sends{margin-top:1rem;padding:0.7rem 0.8rem;background:rgba(0,184,148,0.04);border:1px solid rgba(0,184,148,0.12);border-radius:8px}
+.modal-sends-title{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;color:var(--success);margin-bottom:0.3rem;display:flex;align-items:center;gap:0.4rem}
+.modal-sends-title::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--success)}
+
+/* ╔══════════════════════════════════════════╗
+   ║        FINAL OUTPUT + STATS             ║
+   ╚══════════════════════════════════════════╝ */
+.final-panel{display:none;margin:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:fadeUp 0.5s ease}
+.final-panel.visible{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.final-panel-header{padding:0.8rem 1rem;font-weight:700;font-size:0.95rem;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(108,92,231,0.06),rgba(0,206,201,0.04));display:flex;align-items:center;gap:0.5rem}
+.final-panel-header::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);animation:doneBlink 1.5s ease-in-out infinite}
+@keyframes doneBlink{0%,100%{opacity:1}50%{opacity:0.4}}
+.final-panel-body{padding:1.25rem;max-height:600px;overflow-y:auto}
+.final-panel-body pre{white-space:pre-wrap;word-wrap:break-word;font-family:'Cascadia Code','Consolas',monospace;font-size:0.82rem;line-height:1.7;color:var(--text)}
+
+.stats-bar{display:none;gap:1rem;padding:0 1.5rem;margin-bottom:1rem;font-size:0.78rem;color:var(--muted);flex-wrap:wrap;justify-content:center}
+.stats-bar.visible{display:flex}
+.stat-item{background:var(--surface);padding:0.3rem 0.7rem;border-radius:6px;border:1px solid var(--border)}
+.stat-item span{color:var(--text);font-weight:600}
+
+/* ╔══════════════════════════════════════════╗
+   ║    ITERATION TIMELINE + FEEDBACK        ║
+   ╚══════════════════════════════════════════╝ */
+.iter-timeline{display:none;margin:0 1rem 0.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:fadeUp 0.5s ease}
+.iter-timeline.visible{display:block}
+.iter-timeline-header{padding:0.6rem 1rem;font-weight:700;font-size:0.85rem;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(253,203,110,0.08),rgba(225,112,85,0.06));display:flex;align-items:center;gap:0.5rem}
+.iter-timeline-header::before{content:'\21BB';display:inline-block;font-size:1rem;color:var(--warning)}
+.iter-timeline-body{padding:0.8rem 1rem;display:flex;flex-wrap:wrap;gap:0.5rem}
+.iter-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;min-width:120px;flex:0 0 auto;transition:border-color 0.3s}
+.iter-card.approved{border-color:var(--success)}
+.iter-card.rejected{border-color:var(--danger)}
+.iter-card.user-feedback{border-color:var(--cyan);background:rgba(0,206,201,0.04)}
+.iter-card-num{font-size:0.72rem;font-weight:700;color:var(--muted);margin-bottom:0.15rem}
+.iter-card-score{font-size:1.2rem;font-weight:800;line-height:1}
+.iter-card-verdict{font-size:0.65rem;font-weight:600;margin-top:0.15rem}
+.iter-card-source{font-size:0.58rem;margin-top:0.1rem;padding:0.08rem 0.35rem;border-radius:3px;display:inline-block}
+.iter-card-source.auto{background:rgba(108,92,231,0.12);color:var(--accent2)}
+.iter-card-source.user{background:rgba(0,206,201,0.15);color:var(--cyan)}
+
+/* Iteration diff detail box */
+.iter-diff{margin:0.5rem 1rem 0.8rem;padding:0;border-radius:10px;border:1px solid var(--border);overflow:hidden;animation:fadeUp 0.4s ease}
+.iter-diff-header{display:flex;align-items:center;gap:0.6rem;padding:0.6rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.iter-diff-header:hover{background:rgba(108,92,231,0.06)}
+.iter-diff-toggle{font-size:0.7rem;color:var(--muted);transition:transform 0.3s}
+.iter-diff-toggle.open{transform:rotate(90deg)}
+.iter-diff-title{flex:1;font-size:0.82rem;font-weight:700;color:var(--text)}
+.iter-diff-score-change{font-size:0.8rem;font-weight:700;white-space:nowrap}
+.iter-diff-score-change.up{color:var(--success)}
+.iter-diff-score-change.same{color:var(--warning)}
+.iter-diff-score-change.down{color:var(--danger)}
+.iter-diff-body{display:none;padding:0.8rem 1rem}
+.iter-diff-body.open{display:block}
+.iter-diff-section{margin-bottom:0.6rem}
+.iter-diff-section-title{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;display:flex;align-items:center;gap:0.3rem}
+.iter-diff-section-title.good{color:var(--success)}
+.iter-diff-section-title.bad{color:var(--danger)}
+.iter-diff-section-title.note{color:var(--warning)}
+.iter-diff-item{font-size:0.8rem;padding:0.2rem 0.5rem;margin:0.15rem 0;border-radius:4px;line-height:1.45;color:var(--text);opacity:0.9}
+.iter-diff-item.improved{background:rgba(0,184,148,0.06);border-left:3px solid var(--success);padding-left:0.6rem}
+.iter-diff-item.issue{background:rgba(225,112,85,0.06);border-left:3px solid var(--danger);padding-left:0.6rem}
+.iter-diff-item.info{background:rgba(253,203,110,0.06);border-left:3px solid var(--warning);padding-left:0.6rem}
+
+/* Feedback input panel */
+.feedback-panel{display:none;margin:0 1rem 1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:fadeUp 0.5s ease}
+.feedback-panel.visible{display:block}
+.feedback-header{padding:0.6rem 1rem;font-weight:700;font-size:0.85rem;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,206,201,0.06),rgba(108,92,231,0.04));display:flex;align-items:center;gap:0.5rem}
+.feedback-header::before{content:'\1F4AC';display:inline-block;font-size:0.9rem}
+.feedback-body{padding:1rem}
+.feedback-desc{font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem;line-height:1.5}
+.feedback-textarea{width:100%;min-height:80px;background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem;color:var(--text);font-family:inherit;font-size:0.85rem;resize:vertical;line-height:1.5}
+.feedback-textarea:focus{outline:none;border-color:var(--cyan)}
+.feedback-textarea:disabled{opacity:0.4}
+.feedback-actions{display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center}
+.btn-feedback{background:linear-gradient(135deg,var(--cyan),#0ab5b0);color:#000;border:none;border-radius:8px;padding:0.5rem 1.2rem;font-size:0.82rem;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+.btn-feedback:hover{opacity:0.9}
+.btn-feedback:disabled{opacity:0.3;cursor:not-allowed}
+.feedback-status{font-size:0.75rem;color:var(--muted);line-height:1.5}
+
+/* ╔══════════════════════════════════════════╗
+   ║  READABLE PRD VIEWER                     ║
+   ╚══════════════════════════════════════════╝ */
+.prd-viewer{padding:1.5rem 2rem;max-height:70vh;overflow-y:auto;font-size:0.88rem;line-height:1.8;color:var(--text)}
+.prd-viewer h1{font-size:1.4rem;font-weight:800;color:var(--accent2);margin:1.2rem 0 0.5rem;padding-bottom:0.4rem;border-bottom:2px solid var(--accent)}
+.prd-viewer h2{font-size:1.15rem;font-weight:700;color:var(--cyan);margin:1rem 0 0.4rem;padding-bottom:0.25rem;border-bottom:1px solid var(--border)}
+.prd-viewer h3{font-size:1rem;font-weight:600;color:var(--green);margin:0.8rem 0 0.3rem}
+.prd-viewer h4{font-size:0.92rem;font-weight:600;color:var(--warning);margin:0.7rem 0 0.25rem}
+.prd-viewer p{margin:0.4rem 0;color:var(--text);opacity:0.92}
+.prd-viewer ul,.prd-viewer ol{margin:0.3rem 0 0.3rem 1.5rem;color:var(--text);opacity:0.9}
+.prd-viewer li{margin:0.15rem 0}
+.prd-viewer strong{color:#fff;font-weight:700}
+.prd-viewer em{color:var(--accent2);font-style:italic}
+.prd-viewer code{background:var(--code-bg);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.82rem;color:var(--pink);font-family:'Cascadia Code','Consolas',monospace}
+.prd-viewer blockquote{border-left:3px solid var(--accent);padding:0.4rem 0.8rem;margin:0.5rem 0;background:rgba(108,92,231,0.05);border-radius:0 6px 6px 0;color:var(--muted)}
+.prd-viewer hr{border:none;border-top:1px solid var(--border);margin:1rem 0}
+.prd-viewer table{width:100%;border-collapse:collapse;margin:0.5rem 0;font-size:0.82rem}
+.prd-viewer th{background:var(--surface2);border:1px solid var(--border);padding:0.4rem 0.6rem;font-weight:700;text-align:left;color:var(--accent2)}
+.prd-viewer td{border:1px solid var(--border);padding:0.35rem 0.6rem}
+
+/* Score badge in PRD viewer header */
+.prd-score-badge{display:inline-flex;align-items:center;gap:0.4rem;padding:0.2rem 0.8rem;border-radius:20px;font-size:0.8rem;font-weight:700;margin-left:auto}
+.prd-score-badge.approved{background:rgba(0,184,148,0.15);color:var(--success)}
+.prd-score-badge.below{background:rgba(225,112,85,0.15);color:var(--danger)}
+
+/* Yes/No prompt */
+.feedback-prompt{display:none;margin:0 1rem 0.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.2rem;text-align:center;animation:fadeUp 0.5s ease}
+.feedback-prompt.visible{display:block}
+.feedback-prompt-text{font-size:0.92rem;font-weight:600;color:var(--text);margin-bottom:0.8rem}
+.feedback-prompt-btns{display:flex;gap:0.6rem;justify-content:center}
+.btn-yes{background:linear-gradient(135deg,var(--warning),#e67e22);color:#000;border:none;border-radius:8px;padding:0.5rem 1.8rem;font-size:0.85rem;font-weight:700;cursor:pointer;transition:opacity 0.2s}
+.btn-yes:hover{opacity:0.9}
+.btn-no{background:linear-gradient(135deg,var(--success),#00a381);color:#000;border:none;border-radius:8px;padding:0.5rem 1.8rem;font-size:0.85rem;font-weight:700;cursor:pointer;transition:opacity 0.2s}
+.btn-no:hover{opacity:0.9}
+
+/* Next button */
+.next-section{display:none;margin:1rem;text-align:center;animation:fadeUp 0.5s ease}
+.next-section.visible{display:block}
+.prd-approved-msg{font-size:1.2rem;font-weight:800;color:var(--success);margin-bottom:0.6rem}
+.prd-approved-sub{font-size:0.85rem;color:var(--muted);margin-bottom:1rem}
+.btn-next{background:linear-gradient(135deg,var(--accent),var(--cyan));color:#fff;border:none;border-radius:10px;padding:0.7rem 2.5rem;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity 0.2s,transform 0.2s}
+.btn-next:hover{opacity:0.9;transform:translateY(-1px)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+@media(max-width:640px){
+  .input-strip{flex-direction:column;padding:0 0.75rem}
+  .btn-run{padding:0.6rem}
+  .modal-panel{width:100vw}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════
+     HEADER + INPUT
+     ═══════════════════════════ -->
+<header>
+  <h1>Product Alignment System</h1>
+  <p>Watch 10 agents communicate, debate, and iterate in real time</p>
+  <div class="arch-badge">10 Agents &bull; 5 Phases &bull; Cross-Agent Debate &bull; Quality Gate &bull; Feedback Loop</div>
+</header>
+
+<div class="input-strip">
+  <textarea id="idea" rows="1" placeholder="Enter your raw product idea… (Ctrl+Enter to run)"></textarea>
+  <button class="btn-run" id="runBtn" onclick="startPipeline()">Run Pipeline</button>
+</div>
+
+<div class="timer-bar" id="timerBar">
+  <span id="timerText">0.0s</span>
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <span id="stepCount">0 / {{ total }}</span>
+</div>
+
+<!-- ═══════════════════════════
+     THE FLOWCHART (hero view)
+     ═══════════════════════════ -->
+<div class="flowchart-area" id="flowArea">
+  <div class="fc-canvas">
+    <div class="fc-hint" id="fcHint">Click any agent node to see behind-the-scenes analysis</div>
+
+    <svg id="flowSvg" viewBox="0 0 1100 480" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#6b7084"/></marker>
+        <marker id="ah-act" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#6c5ce7"/></marker>
+        <marker id="ah-done" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#00b894"/></marker>
+        <marker id="ah-fb" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fdcb6e"/></marker>
+      </defs>
+
+      <!-- ═══ Phase regions ═══ -->
+      <rect class="phase-region" x="12" y="38" width="205" height="220"/>
+      <text class="phase-label" x="114" y="30" text-anchor="middle">Phase 1 — Discovery</text>
+
+      <rect class="phase-region" x="240" y="38" width="310" height="280"/>
+      <text class="phase-label" x="395" y="30" text-anchor="middle">Phase 2 — Parallel Analysis</text>
+
+      <rect class="phase-region" x="575" y="38" width="185" height="280"/>
+      <text class="phase-label" x="667" y="30" text-anchor="middle">Phase 3 — Debate</text>
+
+      <rect class="phase-region" x="12" y="340" width="560" height="125"/>
+      <text class="phase-label" x="292" y="332" text-anchor="middle">Phase 4 — Quality-Gated PRD</text>
+
+      <rect class="phase-region" x="785" y="38" width="300" height="425"/>
+      <text class="phase-label" x="935" y="30" text-anchor="middle">Phase 5 — Final</text>
+
+      <!-- ═══ ARROWS (render below nodes) ═══ -->
+      <!-- 1→2 -->
+      <path class="fc-arrow" id="a-1-2" d="M114,138 L114,162"/>
+      <text class="fc-label" id="l-1-2" x="126" y="154">structured idea</text>
+
+      <!-- 2→3 fan-out -->
+      <path class="fc-arrow" id="a-2-3" d="M186,185 L268,100"/>
+      <text class="fc-label" id="l-2-3" x="220" y="133">questions</text>
+
+      <!-- 2→4 -->
+      <path class="fc-arrow" id="a-2-4" d="M186,195 L268,175"/>
+      <text class="fc-label" id="l-2-4" x="220" y="180">questions</text>
+
+      <!-- 2→5 -->
+      <path class="fc-arrow" id="a-2-5" d="M186,205 L268,250"/>
+      <text class="fc-label" id="l-2-5" x="220" y="236">questions</text>
+
+      <!-- 3→6 -->
+      <path class="fc-arrow" id="a-3-6" d="M422,92 L600,145"/>
+      <text class="fc-label" id="l-3-6" x="502" y="110">patterns found</text>
+
+      <!-- 4→6 -->
+      <path class="fc-arrow" id="a-4-6" d="M422,175 L600,165"/>
+      <text class="fc-label" id="l-4-6" x="502" y="164">gaps &amp; issues</text>
+
+      <!-- 5→6 -->
+      <path class="fc-arrow" id="a-5-6" d="M422,255 L600,185"/>
+      <text class="fc-label" id="l-5-6" x="502" y="228">priorities</text>
+
+      <!-- 6→7 (L-shape down then left) -->
+      <path class="fc-arrow" id="a-6-7" d="M667,220 L667,310 L100,310 L100,355"/>
+      <text class="fc-label" id="l-6-7" x="390" y="304">debate synthesis + all analysis</text>
+
+      <!-- 7→8 -->
+      <path class="fc-arrow" id="a-7-8" d="M168,395 L260,395"/>
+      <text class="fc-label" id="l-7-8" x="208" y="388">PRD draft</text>
+
+      <!-- 8→9 -->
+      <path class="fc-arrow" id="a-8-9" d="M400,395 L430,395"/>
+      <text class="fc-label" id="l-8-9" x="410" y="388">feedback</text>
+
+      <!-- 8→7 feedback loop (dashed, curves below) -->
+      <path class="fc-arrow-fb" id="a-8-7-fb" d="M330,420 L330,453 L100,453 L100,420"/>
+      <text class="fc-label" id="l-8-7-fb" x="205" y="468" fill="#fdcb6e">&#x21bb; quality feedback loop</text>
+      <!-- Iteration counter on the feedback arrow -->
+      <text class="iter-counter" id="iter-counter-fb" x="215" y="448">×0</text>
+
+      <!-- 9→10 -->
+      <path class="fc-arrow" id="a-9-10" d="M530,395 L810,230"/>
+      <text class="fc-label" id="l-9-10" x="665" y="305">revised PRD</text>
+
+      <!-- 6→10 -->
+      <path class="fc-arrow" id="a-6-10" d="M745,170 L810,200"/>
+      <text class="fc-label" id="l-6-10" x="772" y="178">debate highlights</text>
+
+      <!-- 8→10 dotted -->
+      <path class="fc-arrow" id="a-8-10" d="M385,370 L900,225" stroke-dasharray="5 3"/>
+      <text class="fc-label" id="l-8-10" x="640" y="288">QG score</text>
+
+      <!-- 10→output -->
+      <path class="fc-arrow" id="a-10-out" d="M935,265 L935,430 L935,455"/>
+      <text class="fc-label" id="l-10-out" x="948" y="448" fill="#55efc4" font-weight="700">FINAL OUTPUT &#x2193;</text>
+
+      <!-- ═══ Travelling dots (animate along paths) ═══ -->
+      <circle class="travel-dot" id="td-1-2" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M114,138 L114,162"/></circle>
+      <circle class="travel-dot" id="td-2-3" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M186,185 L268,100"/></circle>
+      <circle class="travel-dot" id="td-2-4" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M186,195 L268,175"/></circle>
+      <circle class="travel-dot" id="td-2-5" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M186,205 L268,250"/></circle>
+      <circle class="travel-dot" id="td-3-6" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M422,92 L600,145"/></circle>
+      <circle class="travel-dot" id="td-4-6" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M422,175 L600,165"/></circle>
+      <circle class="travel-dot" id="td-5-6" r="4"><animateMotion dur="1.2s" repeatCount="indefinite" path="M422,255 L600,185"/></circle>
+      <circle class="travel-dot" id="td-6-7" r="4"><animateMotion dur="2s" repeatCount="indefinite" path="M667,220 L667,310 L100,310 L100,355"/></circle>
+      <circle class="travel-dot" id="td-7-8" r="4"><animateMotion dur="1s" repeatCount="indefinite" path="M168,395 L260,395"/></circle>
+      <circle class="travel-dot" id="td-8-9" r="4"><animateMotion dur="0.8s" repeatCount="indefinite" path="M400,395 L430,395"/></circle>
+      <circle class="travel-dot" id="td-8-7-fb" r="4" fill="#fdcb6e"><animateMotion dur="2s" repeatCount="indefinite" path="M330,420 L330,453 L100,453 L100,420"/></circle>
+      <circle class="travel-dot" id="td-9-10" r="4"><animateMotion dur="1.5s" repeatCount="indefinite" path="M530,395 L810,230"/></circle>
+      <circle class="travel-dot" id="td-6-10" r="4"><animateMotion dur="1s" repeatCount="indefinite" path="M745,170 L810,200"/></circle>
+      <circle class="travel-dot" id="td-8-10" r="4"><animateMotion dur="1.5s" repeatCount="indefinite" path="M385,370 L900,225"/></circle>
+      <circle class="travel-dot" id="td-10-out" r="4" fill="#55efc4"><animateMotion dur="1.5s" repeatCount="indefinite" path="M935,265 L935,430 L935,455"/></circle>
+
+      <!-- ═══ AGENT NODES ═══ -->
+      <!-- 1 — Input Analyst -->
+      <g class="fc-node" id="fn-1" onclick="openModal(1)">
+        <rect class="node-box" x="42" y="55" width="144" height="80"/>
+        <circle class="node-num-circle" cx="66" cy="75" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="66" y="79" text-anchor="middle">1</text>
+        <text class="node-label" x="114" y="100" text-anchor="middle">Input Analyst</text>
+        <text class="node-sub" x="114" y="114" text-anchor="middle">Captures &amp; structures idea</text>
+        <text class="node-status" x="114" y="130" id="ns-1">Waiting</text>
+      </g>
+
+      <!-- 2 — Interrogator -->
+      <g class="fc-node" id="fn-2" onclick="openModal(2)">
+        <rect class="node-box" x="42" y="162" width="144" height="80"/>
+        <circle class="node-num-circle" cx="66" cy="182" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="66" y="186" text-anchor="middle">2</text>
+        <text class="node-label" x="114" y="207" text-anchor="middle">Interrogator</text>
+        <text class="node-sub" x="114" y="221" text-anchor="middle">Stress-tests with questions</text>
+        <text class="node-status" x="114" y="237" id="ns-2">Waiting</text>
+      </g>
+
+      <!-- 3 — Pattern Analyst -->
+      <g class="fc-node" id="fn-3" onclick="openModal(3)">
+        <rect class="node-box" x="268" y="55" width="154" height="80"/>
+        <circle class="node-num-circle" cx="292" cy="75" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="292" y="79" text-anchor="middle">3</text>
+        <text class="node-label" x="345" y="100" text-anchor="middle">Pattern Analyst</text>
+        <text class="node-sub" x="345" y="114" text-anchor="middle">Industry pattern matching</text>
+        <text class="node-status" x="345" y="130" id="ns-3">Waiting</text>
+      </g>
+
+      <!-- 4 — Consistency Auditor -->
+      <g class="fc-node" id="fn-4" onclick="openModal(4)">
+        <rect class="node-box" x="268" y="148" width="154" height="80"/>
+        <circle class="node-num-circle" cx="292" cy="168" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="292" y="172" text-anchor="middle">4</text>
+        <text class="node-label" x="345" y="193" text-anchor="middle">Consistency Auditor</text>
+        <text class="node-sub" x="345" y="207" text-anchor="middle">Finds contradictions &amp; gaps</text>
+        <text class="node-status" x="345" y="223" id="ns-4">Waiting</text>
+      </g>
+
+      <!-- 5 — Scope Manager -->
+      <g class="fc-node" id="fn-5" onclick="openModal(5)">
+        <rect class="node-box" x="268" y="242" width="154" height="80"/>
+        <circle class="node-num-circle" cx="292" cy="262" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="292" y="266" text-anchor="middle">5</text>
+        <text class="node-label" x="345" y="287" text-anchor="middle">Scope Manager</text>
+        <text class="node-sub" x="345" y="301" text-anchor="middle">Prioritises P0 / P1 / P2</text>
+        <text class="node-status" x="345" y="317" id="ns-5">Waiting</text>
+      </g>
+
+      <!-- 6 — Debate Synthesiser -->
+      <g class="fc-node" id="fn-6" onclick="openModal(6)">
+        <rect class="node-box" x="600" y="110" width="170" height="110"/>
+        <circle class="node-num-circle" cx="624" cy="133" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="624" y="137" text-anchor="middle">6</text>
+        <text class="node-label" x="685" y="158" text-anchor="middle">Cross-Agent Debate</text>
+        <text class="node-sub" x="685" y="172" text-anchor="middle">Critiques all 3 analyses</text>
+        <text class="node-sub" x="685" y="186" text-anchor="middle">Finds agreements &amp; conflicts</text>
+        <text class="node-status" x="685" y="210" id="ns-6">Waiting</text>
+      </g>
+
+      <!-- 7 — PRD Author -->
+      <g class="fc-node" id="fn-7" onclick="openModal(7)">
+        <rect class="node-box" x="28" y="360" width="140" height="80"/>
+        <circle class="node-num-circle" cx="52" cy="380" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="52" y="384" text-anchor="middle">7</text>
+        <text class="node-label" x="98" y="405" text-anchor="middle">PRD Author</text>
+        <text class="node-sub" x="98" y="419" text-anchor="middle">Writes draft document</text>
+        <text class="node-status" x="98" y="435" id="ns-7">Waiting</text>
+        <!-- iteration badge (hidden initially) -->
+        <rect class="iter-badge-bg" id="ib-bg-7" x="138" y="360" width="30" height="16" opacity="0"/>
+        <text class="iter-badge" id="ib-7" x="153" y="372" text-anchor="middle" opacity="0"></text>
+      </g>
+
+      <!-- 8 — Quality Gate -->
+      <g class="fc-node" id="fn-8" onclick="openModal(8)">
+        <rect class="node-box" x="200" y="360" width="200" height="80"/>
+        <circle class="node-num-circle" cx="224" cy="380" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="224" y="384" text-anchor="middle">8</text>
+        <text class="node-label" x="300" y="405" text-anchor="middle">Quality Gate</text>
+        <text class="node-sub" x="300" y="419" text-anchor="middle">Scores 1-10 · APPROVED or REVISION</text>
+        <text class="node-status" x="300" y="435" id="ns-8">Waiting</text>
+        <!-- iteration badge -->
+        <rect class="iter-badge-bg" id="ib-bg-8" x="370" y="360" width="30" height="16" opacity="0"/>
+        <text class="iter-badge" id="ib-8" x="385" y="372" text-anchor="middle" opacity="0"></text>
+      </g>
+
+      <!-- 9 — PRD Reviser -->
+      <g class="fc-node" id="fn-9" onclick="openModal(9)">
+        <rect class="node-box" x="430" y="360" width="140" height="80"/>
+        <circle class="node-num-circle" cx="454" cy="380" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="454" y="384" text-anchor="middle">9</text>
+        <text class="node-label" x="500" y="405" text-anchor="middle">PRD Revision</text>
+        <text class="node-sub" x="500" y="419" text-anchor="middle">Addresses QG feedback</text>
+        <text class="node-status" x="500" y="435" id="ns-9">Waiting</text>
+        <!-- iteration badge -->
+        <rect class="iter-badge-bg" id="ib-bg-9" x="540" y="360" width="30" height="16" opacity="0"/>
+        <text class="iter-badge" id="ib-9" x="555" y="372" text-anchor="middle" opacity="0"></text>
+      </g>
+
+      <!-- 10 — MCP Orchestrator -->
+      <g class="fc-node" id="fn-10" onclick="openModal(10)">
+        <rect class="node-box" x="810" y="170" width="250" height="95"/>
+        <circle class="node-num-circle" cx="837" cy="193" r="11" fill="var(--border)"/>
+        <text class="node-num-badge" x="837" y="197" text-anchor="middle">10</text>
+        <text class="node-label" x="935" y="218" text-anchor="middle">MCP Orchestrator</text>
+        <text class="node-sub" x="935" y="232" text-anchor="middle">Assembles final deliverable</text>
+        <text class="node-status" x="935" y="255" id="ns-10">Waiting</text>
+      </g>
+    </svg>
+
+    <div class="legend-strip">
+      <div class="leg-item"><div class="leg-swatch" style="background:var(--muted)"></div> Waiting</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:var(--accent);box-shadow:0 0 6px var(--accent)"></div> Working</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:var(--success)"></div> Done</div>
+      <div class="leg-item"><div class="leg-line" style="background:var(--accent);box-shadow:0 0 4px var(--accent)"></div> Active data flow</div>
+      <div class="leg-item"><div class="leg-line" style="background:var(--success)"></div> Completed</div>
+      <div class="leg-item"><div class="leg-line" style="background:repeating-linear-gradient(90deg,var(--warning) 0,var(--warning) 4px,transparent 4px,transparent 7px)"></div> Feedback loop</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:var(--warning);font-size:7px;text-align:center;line-height:10px;color:#000;font-weight:700">×2</div> Iteration cycle</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     SLIDE-IN DETAIL MODAL
+     ═══════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+<div class="modal-panel" id="modalPanel">
+  <div class="modal-head">
+    <div class="modal-head-num" id="modalNum">1</div>
+    <div class="modal-head-info">
+      <div class="modal-head-title" id="modalTitle">Agent Name</div>
+      <div class="modal-head-sub" id="modalSub">Description</div>
+    </div>
+    <span class="modal-status waiting" id="modalStatus">Waiting</span>
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+  </div>
+  <div class="modal-body" id="modalBody">
+    <div style="text-align:center;padding:3rem;color:var(--muted)">
+      Agent hasn't started yet.<br>Run the pipeline to see live analysis.
+    </div>
+  </div>
+</div>
+
+<!-- stats + final output -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat-item">Time: <span id="statTime">—</span></div>
+  <div class="stat-item">Agents: <span id="statSteps">—</span></div>
+  <div class="stat-item">LLM Calls: <span id="statCalls">—</span></div>
+  <div class="stat-item">Output: <span id="statChars">—</span></div>
+</div>
+
+<!-- PRD Viewer — readable formatted output -->
+<div class="final-panel" id="finalPanel">
+  <div class="final-panel-header">
+    Final Deliverable — Multi-Agent Output
+    <span class="prd-score-badge" id="prdScoreBadge" style="display:none"></span>
+  </div>
+  <div class="prd-viewer" id="prdViewer"></div>
+  <!-- Hidden raw storage -->
+  <pre id="finalOutput" style="display:none"></pre>
+</div>
+
+<!-- ═══════════════════════════
+     ITERATION TIMELINE
+     ═══════════════════════════ -->
+<div class="iter-timeline" id="iterTimeline">
+  <div class="iter-timeline-header">Iteration Timeline — Quality Gate History</div>
+  <div class="iter-timeline-body" id="iterTimelineBody"></div>
+</div>
+
+<!-- ═══════════════════════════
+     YES/NO FEEDBACK PROMPT
+     ═══════════════════════════ -->
+<div class="feedback-prompt" id="feedbackPrompt">
+  <div class="feedback-prompt-text">Would you like to provide further feedback to improve the PRD?</div>
+  <div class="feedback-prompt-btns">
+    <button class="btn-yes" onclick="showFeedbackPanel()">Yes — I have feedback</button>
+    <button class="btn-no" onclick="approvePRD()">No — Looks good!</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     USER FEEDBACK PANEL (hidden initially)
+     ═══════════════════════════ -->
+<div class="feedback-panel" id="feedbackPanel">
+  <div class="feedback-header">Provide Your Feedback</div>
+  <div class="feedback-body">
+    <div class="feedback-desc">
+      Type your feedback below — the PRD Reviser will address every point,
+      and the Quality Gate will re-evaluate. You can iterate as many times as you like.
+    </div>
+    <textarea class="feedback-textarea" id="feedbackText" placeholder="e.g. Add more detail on the error handling flows, include a section on accessibility requirements, the success metrics need concrete numbers…" disabled></textarea>
+    <div class="feedback-actions">
+      <button class="btn-feedback" id="feedbackBtn" onclick="submitFeedback()" disabled>Submit Feedback &amp; Re-iterate</button>
+      <span class="feedback-status" id="feedbackStatus"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     PRD APPROVED + NEXT BUTTON
+     ═══════════════════════════ -->
+<div class="next-section" id="nextSection">
+  <div class="prd-approved-msg">&#x2713; PRD Approved</div>
+  <div class="prd-approved-sub">Your Product Requirements Document has been finalized and approved.</div>
+  <button class="btn-next" onclick="goToNext()">Next &rarr;</button>
+</div>
+
+<script>
+const TOTAL = {{ total }};
+
+/* ═══════════════════════════════════════════
+   STEP METADATA (mirrors Python STEP_INFO)
+   ═══════════════════════════════════════════ */
+const STEPS = [
+  {num:1,  name:'Product Input',     desc:'Capturing & analysing raw idea',          phase:'discovery'},
+  {num:2,  name:'Interrogation',     desc:'Stress-testing with probing questions',   phase:'discovery'},
+  {num:3,  name:'Pattern Analysis',  desc:'Matching against known product patterns', phase:'analysis'},
+  {num:4,  name:'Consistency Audit', desc:'Finding contradictions & gaps',           phase:'analysis'},
+  {num:5,  name:'Scope & Priority',  desc:'Categorising P0 / P1 / P2',              phase:'analysis'},
+  {num:6,  name:'Cross-Agent Debate',desc:'Agents critique each other\'s findings',  phase:'debate'},
+  {num:7,  name:'PRD Draft',         desc:'Writing initial structured PRD',          phase:'prd'},
+  {num:8,  name:'Quality Gate',      desc:'Meta-orchestrator evaluates PRD quality', phase:'prd'},
+  {num:9,  name:'PRD Revision',      desc:'Revising PRD based on quality feedback',  phase:'prd'},
+  {num:10, name:'Final Compilation', desc:'Assembling investor-grade deliverable',   phase:'final'},
+];
+
+/* Who sends data TO this agent, and who this agent sends data TO */
+const DATA_FLOW = {
+  1:  {from:['User Input'],                     to:['Agent 2 — Interrogator']},
+  2:  {from:['Agent 1 — Input Analyst'],         to:['Agent 3 — Pattern Analyst','Agent 4 — Consistency Auditor','Agent 5 — Scope Manager']},
+  3:  {from:['Agent 2 — Interrogator'],          to:['Agent 6 — Debate Synthesiser']},
+  4:  {from:['Agent 2 — Interrogator'],          to:['Agent 6 — Debate Synthesiser']},
+  5:  {from:['Agent 2 — Interrogator'],          to:['Agent 6 — Debate Synthesiser']},
+  6:  {from:['Agent 3 — Pattern Analyst','Agent 4 — Auditor','Agent 5 — Scope Manager'], to:['Agent 7 — PRD Author','Agent 10 — MCP Final']},
+  7:  {from:['Agent 6 — Debate Synthesiser'],    to:['Agent 8 — Quality Gate']},
+  8:  {from:['Agent 7 — PRD Author'],            to:['Agent 9 — PRD Reviser','Agent 7 — Feedback Loop ↩','Agent 10 — MCP Final']},
+  9:  {from:['Agent 8 — Quality Gate'],          to:['Agent 10 — MCP Final']},
+  10: {from:['Agent 6 — Debate','Agent 8 — QG Score','Agent 9 — Revised PRD'], to:['Final Output']},
+};
+
+/* Arrow map: which arrows activate per step */
+const ARROW_MAP = {
+  1: {in:[], out:['a-1-2']},
+  2: {in:['a-1-2'], out:['a-2-3','a-2-4','a-2-5']},
+  3: {in:['a-2-3'], out:['a-3-6']},
+  4: {in:['a-2-4'], out:['a-4-6']},
+  5: {in:['a-2-5'], out:['a-5-6']},
+  6: {in:['a-3-6','a-4-6','a-5-6'], out:['a-6-7','a-6-10']},
+  7: {in:['a-6-7'], out:['a-7-8']},
+  8: {in:['a-7-8'], out:['a-8-9','a-8-7-fb','a-8-10']},
+  9: {in:['a-8-9','a-8-7-fb'], out:['a-9-10']},
+  10:{in:['a-9-10','a-6-10','a-8-10'], out:['a-10-out']},
+};
+
+/* ═══════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════ */
+let running = false, timerInterval = null, startTime = 0, doneCount = 0, totalChars = 0;
+var _completedSteps = {};  /* track which steps have been counted to prevent doneCount inflation */
+let agentData = {};        /* step -> {role, system_prompt, task, context_preview, context_length, output, status} */
+let currentModal = null;   /* which step is open in modal */
+let iterationState = {     /* QG iteration tracking */
+  current: 0,
+  max: 3,
+  history: [],             /* [{iteration, score, verdict}] */
+  phase4Done: false,
+};
+
+/* ═══════════════════════════════════════════
+   FLOWCHART ANIMATION
+   ═══════════════════════════════════════════ */
+function activateNode(step) {
+  const fn = document.getElementById('fn-'+step);
+  if (fn) fn.classList.add('active');
+  const ns = document.getElementById('ns-'+step);
+  if (ns) ns.textContent = '\u25CF Working\u2026';
+  const map = ARROW_MAP[step];
+  if (map) map.in.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('active'); setMarker(el,'act'); }
+    const lbl = document.getElementById(id.replace('a-','l-'));
+    if (lbl) lbl.classList.add('active');
+    const td = document.getElementById('t'+id.replace('a','d'));
+    if (td) td.classList.add('running');
+  });
+}
+
+function completeNode(step) {
+  const fn = document.getElementById('fn-'+step);
+  if (fn) { fn.classList.remove('active'); fn.classList.add('done'); }
+  const ns = document.getElementById('ns-'+step);
+  if (ns) ns.textContent = '\u2713 Done';
+  const map = ARROW_MAP[step];
+  if (map) {
+    map.in.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.remove('active'); el.classList.add('done'); setMarker(el,'done'); }
+      const lbl = document.getElementById(id.replace('a-','l-'));
+      if (lbl) lbl.classList.remove('active');
+      const td = document.getElementById('t'+id.replace('a','d'));
+      if (td) td.classList.remove('running');
+    });
+    map.out.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.add('active'); setMarker(el,'act'); }
+      const lbl = document.getElementById(id.replace('a-','l-'));
+      if (lbl) lbl.classList.add('active');
+      const td = document.getElementById('t'+id.replace('a','d'));
+      if (td) td.classList.add('running');
+    });
+  }
+}
+
+function setMarker(el, type) {
+  const isFb = el.classList.contains('fc-arrow-fb');
+  if (type==='act') el.setAttribute('marker-end', isFb ? 'url(#ah-fb)' : 'url(#ah-act)');
+  else if (type==='done') el.setAttribute('marker-end','url(#ah-done)');
+  else el.setAttribute('marker-end', isFb ? 'url(#ah-fb)' : 'url(#ah)');
+}
+
+function resetFlowchart() {
+  document.querySelectorAll('.fc-node').forEach(n => n.classList.remove('active','done','error'));
+  document.querySelectorAll('.fc-arrow,.fc-arrow-fb').forEach(a => {
+    a.classList.remove('active','done');
+    setMarker(a, 'default');
+  });
+  document.querySelectorAll('.fc-label').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.travel-dot').forEach(d => d.classList.remove('running'));
+  for (let i=1;i<=TOTAL;i++) {
+    const ns = document.getElementById('ns-'+i);
+    if (ns) ns.textContent = 'Waiting';
+  }
+  /* Reset iteration state */
+  iterationState = {current:0, max:3, history:[], phase4Done:false};
+  [7,8,9].forEach(function(s){
+    var bg = document.getElementById('ib-bg-'+s);
+    var tx = document.getElementById('ib-'+s);
+    if (bg) bg.setAttribute('opacity','0');
+    if (tx) tx.setAttribute('opacity','0');
+  });
+  var ic = document.getElementById('iter-counter-fb');
+  if (ic) { ic.textContent = ''; ic.classList.remove('visible'); }
+}
+
+/* ── Iteration helpers ── */
+function showIterBadge(step, text, cls) {
+  var bg = document.getElementById('ib-bg-'+step);
+  var tx = document.getElementById('ib-'+step);
+  if (!bg || !tx) return;
+  bg.setAttribute('opacity','1');
+  bg.className.baseVal = 'iter-badge-bg' + (cls ? ' '+cls : '');
+  /* Adjust badge width for text */
+  var w = Math.max(30, text.length * 7 + 10);
+  bg.setAttribute('width', w);
+  tx.setAttribute('opacity','1');
+  tx.textContent = text;
+}
+
+function reactivateNode(step) {
+  /* Re-set node from "done" back to "active" for a new iteration pass */
+  var fn = document.getElementById('fn-'+step);
+  if (fn) { fn.classList.remove('done'); fn.classList.add('active'); }
+  var ns = document.getElementById('ns-'+step);
+  if (ns) ns.textContent = '\u25CF Working\u2026';
+}
+
+function activateFeedbackLoop() {
+  /* Light up the feedback arrow and its travelling dot */
+  var fb = document.getElementById('a-8-7-fb');
+  if (fb) { fb.classList.add('active'); setMarker(fb,'act'); }
+  var lbl = document.getElementById('l-8-7-fb');
+  if (lbl) lbl.classList.add('active');
+  var td = document.getElementById('td-8-7-fb');
+  if (td) td.classList.add('running');
+  /* Also light up the 7→8 arrow for the re-send */
+  var a78 = document.getElementById('a-7-8');
+  if (a78) { a78.classList.add('active'); setMarker(a78,'act'); }
+  var td78 = document.getElementById('td-7-8');
+  if (td78) td78.classList.add('running');
+}
+
+function deactivateFeedbackLoop() {
+  var fb = document.getElementById('a-8-7-fb');
+  if (fb) { fb.classList.remove('active'); fb.classList.add('done'); setMarker(fb,'done'); }
+  var lbl = document.getElementById('l-8-7-fb');
+  if (lbl) lbl.classList.remove('active');
+  var td = document.getElementById('td-8-7-fb');
+  if (td) td.classList.remove('running');
+}
+
+/* ═══════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════ */
+function openModal(step) {
+  currentModal = step;
+  const s = STEPS[step-1];
+  const d = agentData[step] || {};
+
+  document.getElementById('modalNum').textContent = step;
+  document.getElementById('modalNum').className = 'modal-head-num phase-'+s.phase;
+  document.getElementById('modalTitle').textContent = s.name;
+  document.getElementById('modalSub').textContent = s.desc;
+
+  const sb = document.getElementById('modalStatus');
+  const status = d.status || 'waiting';
+  sb.className = 'modal-status ' + status;
+  sb.textContent = status === 'working' ? '\u25CF Working\u2026' : status === 'completed' ? '\u2713 Done' : status === 'failed' ? '\u2717 Failed' : 'Waiting';
+
+  const body = document.getElementById('modalBody');
+  let html = '';
+
+  /* Data flow: who sends data to this agent */
+  const flow = DATA_FLOW[step];
+  if (flow) {
+    html += '<div class="modal-data-flow"><div class="modal-data-flow-title">Data Received From</div>';
+    flow.from.forEach(f => { html += '<span class="data-from-tag">'+esc(f)+'</span>'; });
+    html += '</div>';
+  }
+
+  if (d.role) {
+    html += agentSec('lbl-identity','Agent Identity', d.role);
+  }
+  if (d.system_prompt) {
+    html += agentSec('lbl-system','System Prompt \u2014 How This Agent Thinks', d.system_prompt);
+  }
+  if (d.context_preview) {
+    html += agentSec('lbl-task','Context Received ('+d.context_length+' chars)', d.context_preview);
+  }
+  if (d.task) {
+    let cls = 'lbl-task';
+    if (step===6) cls='lbl-debate';
+    else if (step===8) cls='lbl-qg';
+    else if (step===9) cls='lbl-revision';
+    html += agentSec(cls, 'Task Assigned', d.task);
+  }
+
+  /* Iteration history (for QG and Reviser) */
+  if ((step === 8 || step === 9) && iterationState.history.length > 0) {
+    html += '<div class="agent-section"><div class="agent-section-label lbl-qg">Iteration History</div>';
+    html += '<div class="agent-section-text" style="max-height:160px">';
+    iterationState.history.forEach(function(h) {
+      var icon = h.verdict === 'APPROVED' ? '\u2713' : h.verdict === 'FORCE_ACCEPTED' ? '\u26A0' : '\u2717';
+      var color = h.verdict === 'APPROVED' ? '#00b894' : h.verdict === 'FORCE_ACCEPTED' ? '#fdcb6e' : '#e17055';
+      html += '<div style="margin-bottom:0.4rem;padding:0.3rem 0.5rem;border-left:3px solid '+color+';background:rgba(255,255,255,0.02);border-radius:0 4px 4px 0">';
+      html += '<span style="font-weight:700;color:'+color+'">'+icon+' Iteration '+h.iteration+'</span>';
+      html += ' — Score: <span style="font-weight:700;color:'+color+'">'+h.score+'/10</span>';
+      html += ' — <span style="color:'+color+'">'+h.verdict+'</span>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  /* Iteration-specific output history */
+  if (d.iteration_history && d.iteration_history.length > 1) {
+    html += '<div class="agent-section"><div class="agent-section-label lbl-revision">Previous Iteration Outputs</div>';
+    d.iteration_history.slice(0,-1).forEach(function(ih) {
+      html += '<details style="margin-bottom:0.4rem"><summary style="cursor:pointer;color:var(--muted);font-size:0.75rem;padding:0.2rem">Iteration '+ih.iteration+' output (click to expand)</summary>';
+      html += '<div class="agent-section-text" style="max-height:150px;margin-top:0.3rem">'+esc(ih.output)+'</div></details>';
+    });
+    html += '</div>';
+  }
+
+  /* Output section */
+  if (d.output || d.status === 'working') {
+    html += '<div class="agent-section"><div class="agent-section-label lbl-output">Agent Output</div>';
+    html += '<div class="agent-section-text output-text" id="modal-output-'+step+'">'+esc(d.output||'');
+    if (d.status === 'working') html += '<span class="typing-cursor"></span>';
+    html += '</div></div>';
+  }
+
+  /* Data sends to */
+  if (flow && d.status === 'completed') {
+    html += '<div class="modal-sends"><div class="modal-sends-title">Sends Data To</div>';
+    flow.to.forEach(t => { html += '<span class="data-from-tag outgoing">'+esc(t)+'</span>'; });
+    html += '</div>';
+  }
+
+  if (!d.status || d.status === 'waiting') {
+    html += '<div style="text-align:center;padding:2.5rem;color:var(--muted);font-size:0.85rem">Agent hasn\'t started yet.<br>Run the pipeline to see live analysis.</div>';
+  }
+
+  body.innerHTML = html;
+
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalPanel').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalPanel').classList.remove('open');
+  currentModal = null;
+}
+
+function refreshModalIfOpen(step) {
+  if (currentModal === step) openModal(step);
+}
+
+function agentSec(cls, label, text) {
+  return '<div class="agent-section"><div class="agent-section-label '+cls+'">'+label+'</div><div class="agent-section-text">'+esc(text)+'</div></div>';
+}
+
+/* ═══════════════════════════════════════════
+   PIPELINE
+   ═══════════════════════════════════════════ */
+function startPipeline() {
+  const idea = document.getElementById('idea').value.trim();
+  if (!idea || running) return;
+  running = true; doneCount = 0; totalChars = 0; agentData = {}; _finished = false; _completedSteps = {};
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runBtn').textContent = 'Running\u2026';
+  document.getElementById('flowArea').classList.add('visible');
+  document.getElementById('timerBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('finalPanel').classList.remove('visible');
+  document.getElementById('statsBar').classList.remove('visible');
+  document.getElementById('iterTimeline').classList.remove('visible');
+  document.getElementById('feedbackPanel').classList.remove('visible');
+  document.getElementById('feedbackPrompt').classList.remove('visible');
+  document.getElementById('nextSection').classList.remove('visible');
+  document.getElementById('prdViewer').innerHTML = '';
+  document.getElementById('feedbackText').value = '';
+  document.getElementById('feedbackText').disabled = true;
+  document.getElementById('feedbackBtn').disabled = true;
+  document.getElementById('feedbackStatus').textContent = '';
+  document.getElementById('feedbackStatus').innerHTML = '';
+  document.getElementById('prdScoreBadge').style.display = 'none';
+  document.getElementById('fcHint').classList.add('show');
+
+  resetFlowchart();
+  closeModal();
+
+  startTime = performance.now();
+  timerInterval = setInterval(function() {
+    document.getElementById('timerText').textContent = ((performance.now()-startTime)/1000).toFixed(1)+'s';
+  }, 100);
+
+  fetch('/api/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({idea:idea})})
+  .then(function(response) {
+    var reader = response.body.getReader(), dec = new TextDecoder();
+    var buf = '';
+    function processBuf() {
+      var lines = buf.split('\n'); buf = lines.pop();
+      for (var i=0; i<lines.length; i++) {
+        if (lines[i].indexOf('data: ')===0) {
+          try {
+            var m = JSON.parse(lines[i].slice(6));
+            handleEvent(m);
+            if (m.event==='complete'||m.event==='fatal') { finish(); return true; }
+          } catch(e){}
+        }
+      }
+      return false;
+    }
+    function read() {
+      reader.read().then(function(result) {
+        if (result.done) {
+          /* Flush any remaining data in buffer before finishing */
+          buf += '\n'; processBuf();
+          finish(); return;
+        }
+        buf += dec.decode(result.value,{stream:true});
+        if (processBuf()) return;
+        read();
+      });
+    }
+    read();
+  });
+}
+
+function handleEvent(msg) {
+  var event = msg.event, step = msg.step, name = msg.name, data = msg.data;
+  if (step === 0 && event !== 'complete' && event !== 'fatal' && event !== 'feedback_complete' && event !== 'phase') return;
+
+  /* ── Iteration events (new) ── */
+  if (event === 'iteration_start') {
+    var info = JSON.parse(data);
+    iterationState.current = info.iteration;
+    iterationState.max = info.max_iterations;
+
+    if (info.iteration > 1) {
+      /* Re-activate the node — it's running again */
+      reactivateNode(step);
+      showIterBadge(step, '\u21bb ' + info.iteration + '/' + info.max_iterations);
+
+      if (step === 9) {
+        /* Revision happening → feedback loop is active */
+        activateFeedbackLoop();
+        var ic = document.getElementById('iter-counter-fb');
+        if (ic) { ic.textContent = '\u00d7' + (info.iteration - 1); ic.classList.add('visible'); }
+      }
+      if (step === 8 && info.iteration > 1) {
+        /* QG re-evaluating → light up 7→8 and 8→9 arrows */
+        showIterBadge(8, 'Review #' + info.iteration);
+      }
+    } else {
+      showIterBadge(step, '#' + info.iteration);
+    }
+    refreshModalIfOpen(step);
+    return;
+  }
+
+  if (event === 'iteration_result') {
+    var info = JSON.parse(data);
+    iterationState.current = info.iteration;
+    iterationState.history = info.history || [];
+
+    var verdict = info.verdict;
+    var score = info.score;
+    var badgeText = score + '/10';
+
+    if (verdict === 'APPROVED') {
+      showIterBadge(8, '\u2713 ' + badgeText, 'approved');
+      deactivateFeedbackLoop();
+    } else if (verdict === 'FORCE_ACCEPTED') {
+      showIterBadge(8, '\u26A0 ' + badgeText + ' (forced)', 'rejected');
+      deactivateFeedbackLoop();
+    } else {
+      showIterBadge(8, '\u2717 ' + badgeText, 'rejected');
+    }
+
+    /* Update the counter on the feedback arrow */
+    if (info.iteration > 0) {
+      var ic = document.getElementById('iter-counter-fb');
+      if (ic) {
+        var revisions = iterationState.history.filter(function(h){return h.verdict !== 'APPROVED';}).length;
+        if (revisions > 0) {
+          ic.textContent = '\u00d7' + revisions + ' revision' + (revisions>1?'s':'');
+          ic.classList.add('visible');
+        }
+      }
+    }
+    refreshModalIfOpen(8);
+    return;
+  }
+
+  if (event === 'start') {
+    if (!agentData[step]) agentData[step] = {};
+    agentData[step].status = 'working';
+    agentData[step].output = '';
+    /* If this is a re-run (iteration > 1), save previous output to history */
+    if (iterationState.current > 1 && (step === 8 || step === 9)) {
+      if (!agentData[step].iteration_history) agentData[step].iteration_history = [];
+      /* Already saved by previous 'done' event */
+      reactivateNode(step);
+    } else {
+      activateNode(step);
+    }
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'agent_info') {
+    var info = JSON.parse(data);
+    var existing = agentData[step] || {};
+    agentData[step] = {
+      role: info.role,
+      system_prompt: info.system_prompt,
+      task: info.task,
+      context_preview: info.context_preview,
+      context_length: info.context_length,
+      status: 'working',
+      output: existing.output || ''
+    };
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'output_chunk') {
+    if (!agentData[step]) agentData[step] = {status:'working', output:''};
+    agentData[step].output += data;
+    /* If modal is open for this step, do live append */
+    if (currentModal === step) {
+      var el = document.getElementById('modal-output-'+step);
+      if (el) {
+        el.querySelectorAll('.typing-cursor').forEach(function(c){c.remove();});
+        el.insertAdjacentText('beforeend', data);
+        var cur = document.createElement('span');
+        cur.className = 'typing-cursor';
+        el.appendChild(cur);
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }
+
+  if (event === 'retry') {
+    if (agentData[step]) agentData[step].output = 'Retrying\u2026 ' + data;
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'done') {
+    if (!agentData[step]) agentData[step] = {};
+    agentData[step].status = 'completed';
+    if (data && (!agentData[step].output || agentData[step].output.length < 10)) {
+      agentData[step].output = data;
+    }
+    /* Save iteration history for agents 8 and 9 */
+    if ((step === 8 || step === 9) && iterationState.current > 0) {
+      if (!agentData[step].iteration_history) agentData[step].iteration_history = [];
+      agentData[step].iteration_history.push({
+        iteration: iterationState.current,
+        output: agentData[step].output
+      });
+    }
+    completeNode(step);
+    if (!_completedSteps[step]) { _completedSteps[step] = true; doneCount++; }
+    totalChars += (data||'').length;
+    document.getElementById('stepCount').textContent = Math.min(doneCount, TOTAL)+' / '+TOTAL;
+    document.getElementById('progressFill').style.width = Math.min(100, doneCount/TOTAL*100).toFixed(0)+'%';
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'error' || event === 'fatal') {
+    if (agentData[step]) agentData[step].status = 'failed';
+    var fn = document.getElementById('fn-'+step);
+    if (fn) { fn.classList.remove('active'); fn.classList.add('error'); }
+    var ns = document.getElementById('ns-'+step);
+    if (ns) ns.textContent = '\u2717 Failed';
+    /* Show user-visible error message for fatal events */
+    if (event === 'fatal') {
+      var errMsg = data || 'An unexpected error occurred.';
+      var errDiv = document.createElement('div');
+      errDiv.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);background:#e74c3c;color:#fff;padding:0.8rem 1.5rem;border-radius:8px;z-index:9999;font-size:0.9rem;max-width:80%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+      errDiv.textContent = '\u26A0 Pipeline Error: ' + errMsg;
+      document.body.appendChild(errDiv);
+      setTimeout(function() { if (errDiv.parentNode) errDiv.parentNode.removeChild(errDiv); }, 10000);
+    }
+    refreshModalIfOpen(step);
+  }
+
+  if (event === 'complete') {
+    var r = JSON.parse(data);
+    document.getElementById('finalOutput').textContent = r.final_output;
+    /* Render readable PRD */
+    document.getElementById('prdViewer').innerHTML = renderPRD(r.final_output);
+    document.getElementById('finalPanel').classList.add('visible');
+
+    /* Show score badge */
+    var lastIter = iterationState.history.length > 0 ? iterationState.history[iterationState.history.length - 1] : null;
+    if (lastIter) {
+      var badge = document.getElementById('prdScoreBadge');
+      var isApproved = lastIter.verdict === 'APPROVED';
+      badge.className = 'prd-score-badge ' + (isApproved ? 'approved' : 'below');
+      badge.textContent = (isApproved ? '\u2713 ' : '\u2717 ') + lastIter.score + '/10';
+      badge.style.display = 'inline-flex';
+    }
+
+    /* Show iteration timeline */
+    renderIterTimeline();
+
+    /* Show Yes/No feedback prompt (not the full feedback panel) */
+    document.getElementById('feedbackPrompt').classList.add('visible');
+
+    /* If auto-iterations couldn't reach threshold, show warning in feedback status for when they click Yes */
+    if (lastIter && (lastIter.verdict === 'FORCE_ACCEPTED' || lastIter.verdict === 'REVISION_NEEDED')) {
+      var scoreHistory = iterationState.history.map(function(h){return h.score+'/10';}).join(' \u2192 ');
+      document.getElementById('feedbackStatus').innerHTML =
+        '<strong style="color:var(--warning)">\u26A0 Auto-iterations exhausted — Score: ' + lastIter.score + '/10 (threshold: 7/10)</strong><br>' +
+        '<span style="color:var(--muted)">Score trend: ' + scoreHistory + '</span><br><br>' +
+        'The system ran ' + iterationState.history.length + ' automatic revision(s) but couldn\'t reach the quality threshold.<br>' +
+        '<strong style="color:var(--accent)">Your help needed:</strong> Review the PRD output above and provide specific feedback below to improve the score.';
+      document.getElementById('feedbackStatus').style.color = 'var(--text)';
+      document.getElementById('feedbackText').placeholder = 'e.g., "Add more detail to the technical architecture section" or "The competitive analysis needs real market data"';
+    }
+
+    document.getElementById('finalPanel').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  if (event === 'user_feedback_start') {
+    var info = JSON.parse(data);
+    if (!agentData[9]) agentData[9] = {};
+    agentData[9].status = 'working';
+    agentData[9].output = '';
+    agentData[9].user_feedback = info.feedback_preview;
+    reactivateNode(9);
+    activateFeedbackLoop();
+    refreshModalIfOpen(9);
+  }
+
+  if (event === 'feedback_complete') {
+    console.log('[feedback_complete] received, data length=' + (data||'').length);
+    try {
+    var r = JSON.parse(data);
+    console.log('[feedback_complete] parsed OK, score=' + r.score + ' verdict=' + r.verdict);
+    iterationState.history = r.qg_history || [];
+
+    /* Update raw storage and render readable PRD */
+    document.getElementById('finalOutput').textContent = r.revised_prd;
+    document.getElementById('prdViewer').innerHTML = renderPRD(r.revised_prd);
+
+    /* Update score badge */
+    var badge = document.getElementById('prdScoreBadge');
+    var isApproved = r.verdict === 'APPROVED';
+    badge.className = 'prd-score-badge ' + (isApproved ? 'approved' : 'below');
+    badge.textContent = (isApproved ? '\u2713 ' : '\u2717 ') + r.score + '/10';
+    badge.style.display = 'inline-flex';
+
+    /* Update timeline */
+    renderIterTimeline();
+
+    /* Re-enable feedback */
+    feedbackRunning = false;
+    document.getElementById('feedbackText').value = '';
+    document.getElementById('feedbackText').disabled = true;
+    document.getElementById('feedbackBtn').disabled = true;
+    document.getElementById('feedbackBtn').textContent = 'Submit Feedback & Re-iterate';
+
+    /* Hide the feedback panel, show the Yes/No prompt */
+    document.getElementById('feedbackPanel').classList.remove('visible');
+
+    if (isApproved) {
+      feedbackApproved = true;
+      console.log('[feedback_complete] APPROVED — showing next section');
+      document.getElementById('feedbackStatus').innerHTML = '';
+      /* Auto-approve — skip to approved state */
+      document.getElementById('feedbackPrompt').classList.remove('visible');
+      document.getElementById('nextSection').classList.add('visible');
+      document.getElementById('nextSection').scrollIntoView({behavior:'smooth',block:'start'});
+    } else {
+      feedbackApproved = false;
+      console.log('[feedback_complete] NOT approved — showing feedback prompt');
+      /* Score still below threshold — show reasons when user clicks Yes */
+      var qgSnippet = (r.qg_feedback || '').substring(0, 600).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var scoreHistory = (r.qg_history || []).map(function(h){return h.score+'/10';}).join(' \u2192 ');
+      document.getElementById('feedbackStatus').innerHTML =
+        '<strong style="color:var(--danger)">\u2717 Score: ' + r.score + '/10 — Still below threshold (7/10)</strong><br>' +
+        '<span style="color:var(--muted)">Score trend: ' + scoreHistory + '</span><br><br>' +
+        '<strong>Quality Gate Feedback:</strong><br>' +
+        '<div style="background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:6px;margin:6px 0;font-size:.85rem;max-height:150px;overflow-y:auto;white-space:pre-wrap;border-left:3px solid var(--danger)">' + qgSnippet + '</div>' +
+        '<br><strong style="color:var(--accent)">Tip:</strong> Address the specific issues above in your next feedback to improve the score.';
+      document.getElementById('feedbackStatus').style.color = 'var(--text)';
+
+      /* Show the Yes/No prompt again */
+      document.getElementById('feedbackPrompt').classList.add('visible');
+      document.getElementById('feedbackPrompt').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    } catch(feedbackErr) {
+      /* If anything goes wrong parsing/rendering, still reset UI and show prompt */
+      console.error('[feedback_complete] Error in handler:', feedbackErr);
+      feedbackRunning = false;
+      document.getElementById('feedbackText').value = '';
+      document.getElementById('feedbackText').disabled = true;
+      document.getElementById('feedbackBtn').disabled = true;
+      document.getElementById('feedbackBtn').textContent = 'Submit Feedback & Re-iterate';
+      document.getElementById('feedbackPanel').classList.remove('visible');
+      document.getElementById('feedbackPrompt').classList.add('visible');
+      document.getElementById('feedbackPrompt').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+
+    deactivateFeedbackLoop();
+    /* Stop travelling dots */
+    document.querySelectorAll('.travel-dot').forEach(function(d){d.classList.remove('running');});
+  }
+}
+
+var _finished = false;
+function finish() {
+  if (_finished) return;
+  _finished = true;
+  running = false; clearInterval(timerInterval);
+  document.querySelectorAll('.travel-dot').forEach(function(d){d.classList.remove('running');});
+  var elapsed = ((performance.now()-startTime)/1000).toFixed(1);
+  document.getElementById('timerText').textContent = elapsed+'s';
+  document.getElementById('progressFill').style.width = '100%';
+  document.getElementById('stepCount').textContent = TOTAL+' / '+TOTAL;
+  document.getElementById('statTime').textContent = elapsed+'s';
+  document.getElementById('statSteps').textContent = doneCount+' / '+TOTAL;
+  document.getElementById('statCalls').textContent = doneCount;
+  document.getElementById('statChars').textContent = totalChars.toLocaleString()+' chars';
+  document.getElementById('statsBar').classList.add('visible');
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('runBtn').textContent = 'Run Pipeline';
+}
+
+function esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+/* ═══════════════════════════════════════════
+   PRD MARKDOWN → HTML RENDERER
+   ═══════════════════════════════════════════ */
+function renderPRD(text) {
+  if (!text) return '<p style="color:var(--muted)">No output yet.</p>';
+  /* Escape HTML first */
+  var safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var lines = safe.split('\n');
+  var html = '';
+  var inList = false;
+  var inTable = false;
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var trimmed = line.trim();
+
+    /* Horizontal rule */
+    if (/^[-=_*]{3,}$/.test(trimmed) || /^={3,}$/.test(trimmed)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inTable) { html += '</tbody></table>'; inTable = false; }
+      html += '<hr>';
+      continue;
+    }
+
+    /* Table rows (pipes) */
+    if (trimmed.indexOf('|') !== -1 && trimmed.split('|').length >= 3) {
+      var cells = trimmed.split('|').map(function(c){return c.trim();}).filter(function(c){return c.length > 0;});
+      /* Skip separator rows like |---|---| */
+      if (cells.every(function(c){return /^[-:]+$/.test(c);})) continue;
+      if (!inTable) { html += '<table><tbody>'; inTable = true; }
+      var tag = i > 0 && !lines[i-1].trim().match(/\|/) ? 'th' : 'td';
+      /* Check if next line is separator → this is header */
+      if (i + 1 < lines.length && lines[i+1].trim().match(/^\|?\s*[-:]+/)) tag = 'th';
+      html += '<tr>' + cells.map(function(c){return '<'+tag+'>'+inlineFormat(c)+'</'+tag+'>';}).join('') + '</tr>';
+      continue;
+    }
+    if (inTable && trimmed.indexOf('|') === -1) { html += '</tbody></table>'; inTable = false; }
+
+    /* Headings */
+    if (/^#{1,4}\s/.test(trimmed)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      var lvl = trimmed.match(/^(#+)/)[1].length;
+      var hText = trimmed.replace(/^#+\s*/, '');
+      html += '<h'+lvl+'>' + inlineFormat(hText) + '</h'+lvl+'>';
+      continue;
+    }
+
+    /* Detect heading-like lines: ALL CAPS, numbered sections like "1. Title", lines ending with : */
+    if (/^[A-Z][A-Z\s\-&:,\/]{5,}$/.test(trimmed)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h2>' + inlineFormat(trimmed.charAt(0) + trimmed.slice(1).toLowerCase()) + '</h2>';
+      continue;
+    }
+    if (/^\d+\.\s+[A-Z]/.test(trimmed) && trimmed.length < 100 && !trimmed.match(/\.\s.*\./)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h3>' + inlineFormat(trimmed) + '</h3>';
+      continue;
+    }
+
+    /* Blockquote */
+    if (/^&gt;\s?/.test(trimmed)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<blockquote>' + inlineFormat(trimmed.replace(/^&gt;\s?/, '')) + '</blockquote>';
+      continue;
+    }
+
+    /* List items */
+    if (/^[-*•]\s/.test(trimmed) || /^\d+\)\s/.test(trimmed)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      var content = trimmed.replace(/^[-*•]\s/, '').replace(/^\d+\)\s/, '');
+      html += '<li>' + inlineFormat(content) + '</li>';
+      continue;
+    }
+    /* Continuation of non-numbered list style: "- item" already handled, also handle "  - sub" */
+    if (/^\s+[-*•]\s/.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += '<li style="margin-left:1rem">' + inlineFormat(trimmed.replace(/^[-*•]\s/, '')) + '</li>';
+      continue;
+    }
+
+    if (inList && trimmed === '') { html += '</ul>'; inList = false; continue; }
+
+    /* Empty line */
+    if (trimmed === '') { continue; }
+
+    /* Regular paragraph */
+    if (inList) { html += '</ul>'; inList = false; }
+    html += '<p>' + inlineFormat(trimmed) + '</p>';
+  }
+
+  if (inList) html += '</ul>';
+  if (inTable) html += '</tbody></table>';
+  return html;
+}
+
+function inlineFormat(s) {
+  /* Bold **text** or __text__ */
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  /* Italic *text* or _text_ */
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  /* Inline code */
+  s = s.replace(/`(.+?)`/g, '<code>$1</code>');
+  return s;
+}
+
+/* ═══════════════════════════════════════════
+   SHOW / HIDE FEEDBACK FLOW
+   ═══════════════════════════════════════════ */
+function showFeedbackPanel() {
+  document.getElementById('feedbackPrompt').classList.remove('visible');
+  document.getElementById('feedbackPanel').classList.add('visible');
+  document.getElementById('feedbackText').disabled = false;
+  document.getElementById('feedbackBtn').disabled = false;
+  document.getElementById('feedbackText').focus();
+  document.getElementById('feedbackPanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function approvePRD() {
+  document.getElementById('feedbackPrompt').classList.remove('visible');
+  document.getElementById('feedbackPanel').classList.remove('visible');
+  document.getElementById('nextSection').classList.add('visible');
+  document.getElementById('nextSection').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function goToNext() {
+  /* Store approved PRD in localStorage and redirect to dev pipeline */
+  var prd = document.getElementById('finalOutput').textContent || '';
+  if (!prd || prd.length < 20) {
+    alert('No approved PRD found. Run the product pipeline first.');
+    return;
+  }
+  var projectName = (document.getElementById('idea').value || 'project').trim().slice(0, 80).replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') || 'project';
+  var lastIter = iterationState.history.length > 0 ? iterationState.history[iterationState.history.length - 1] : null;
+  var score = lastIter ? lastIter.score : '?';
+  localStorage.setItem('approved_prd', prd);
+  localStorage.setItem('project_name', projectName);
+  localStorage.setItem('prd_score', String(score));
+  window.location.href = '/dev';
+}
+
+/* ═══════════════════════════════════════════
+   ITERATION TIMELINE RENDERING
+   ═══════════════════════════════════════════ */
+function renderIterTimeline() {
+  var container = document.getElementById('iterTimelineBody');
+  if (!container) return;
+  if (iterationState.history.length === 0) return;
+  document.getElementById('iterTimeline').classList.add('visible');
+  var html = '';
+
+  /* ── Score summary cards row ── */
+  html += '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem">';
+  iterationState.history.forEach(function(h) {
+    var isUser = h.source === 'user_feedback';
+    var isApproved = h.verdict === 'APPROVED';
+    var cls = isUser ? 'user-feedback' : (isApproved ? 'approved' : 'rejected');
+    var color = isApproved ? 'var(--success)' : h.verdict === 'FORCE_ACCEPTED' ? 'var(--warning)' : 'var(--danger)';
+    var icon = isApproved ? '\u2713' : h.verdict === 'FORCE_ACCEPTED' ? '\u26A0' : '\u2717';
+    html += '<div class="iter-card ' + cls + '">';
+    html += '<div class="iter-card-num">Iteration ' + h.iteration + '</div>';
+    html += '<div class="iter-card-score" style="color:' + color + '">' + icon + ' ' + h.score + '/10</div>';
+    html += '<div class="iter-card-verdict" style="color:' + color + '">' + (h.verdict || '\u2014') + '</div>';
+    html += '<div class="iter-card-source ' + (isUser ? 'user' : 'auto') + '">' + (isUser ? '\uD83D\uDC64 User Feedback' : '\uD83E\uDD16 Auto QG') + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  /* ── Detailed diff boxes for each iteration ── */
+  iterationState.history.forEach(function(h, idx) {
+    var prevScore = idx > 0 ? iterationState.history[idx - 1].score : null;
+    var scoreDelta = prevScore !== null ? h.score - prevScore : null;
+    var deltaLabel = '';
+    var deltaCls = 'same';
+    if (scoreDelta !== null) {
+      if (scoreDelta > 0) { deltaLabel = '\u25B2 +' + scoreDelta; deltaCls = 'up'; }
+      else if (scoreDelta === 0) { deltaLabel = '\u25AC Same'; deltaCls = 'same'; }
+      else { deltaLabel = '\u25BC ' + scoreDelta; deltaCls = 'down'; }
+    }
+
+    var isUser = h.source === 'user_feedback';
+    var titlePrefix = isUser ? '\uD83D\uDC64 ' : '\uD83E\uDD16 ';
+    var title = titlePrefix + 'Iteration ' + h.iteration + ' — ' + h.score + '/10';
+    if (h.verdict === 'APPROVED') title += ' \u2713 Approved';
+
+    var diffId = 'iter-diff-' + h.iteration;
+    /* Auto-open the latest iteration */
+    var isLatest = idx === iterationState.history.length - 1;
+
+    html += '<div class="iter-diff">';
+    html += '<div class="iter-diff-header" onclick="toggleIterDiff(\'' + diffId + '\')">';
+    html += '<span class="iter-diff-toggle ' + (isLatest ? 'open' : '') + '" id="' + diffId + '-toggle">\u25B6</span>';
+    html += '<span class="iter-diff-title">' + title + '</span>';
+    if (deltaLabel) html += '<span class="iter-diff-score-change ' + deltaCls + '">' + deltaLabel + '</span>';
+    html += '</div>';
+    html += '<div class="iter-diff-body ' + (isLatest ? 'open' : '') + '" id="' + diffId + '">';
+
+    /* Score note (e.g. score drop explanation) */
+    if (h.score_note) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title note">\u26A0 Note</div>';
+      html += '<div class="iter-diff-item info">' + escHtml(h.score_note) + '</div>';
+      html += '</div>';
+    }
+
+    /* Score Justification (from QG) — especially useful when score is same */
+    var justification = h.score_justification || [];
+    if (justification.length > 0 && (scoreDelta === 0 || scoreDelta < 0 || idx > 0)) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title" style="color:var(--accent)">\uD83D\uDD0D Score Justification</div>';
+      justification.forEach(function(j) {
+        html += '<div class="iter-diff-item" style="border-left:3px solid var(--accent);padding:4px 8px;margin:2px 0;font-size:0.78rem;background:rgba(108,92,231,0.08)">' + escHtml(j) + '</div>';
+      });
+      html += '</div>';
+    }
+
+    /* Improvements & Remaining — declare early so same-score block can use them */
+    var improvements = h.improvements || [];
+    var remaining = h.remaining_issues || [];
+
+    /* Same-score with improvements — explicit explanation */
+    if (scoreDelta === 0 && improvements.length > 0 && idx > 0 && justification.length === 0 && !h.score_note) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title" style="color:var(--warning)">\u2753 Why Didn\'t the Score Increase?</div>';
+      html += '<div class="iter-diff-item" style="border-left:3px solid var(--warning);padding:4px 8px;font-size:0.78rem;background:rgba(253,203,110,0.08)">';
+      html += 'The QG detected ' + improvements.length + ' improvement(s) but the score remained at ' + h.score + '/10. ';
+      if (remaining.length > 0) {
+        html += 'This is likely because ' + remaining.length + ' issue(s) still remain, offsetting the gains. ';
+        html += 'Focus on addressing the remaining issues above to push the score higher.';
+      } else {
+        html += 'The improvements may have been minor or the QG found them insufficient to warrant a score increase.';
+      }
+      html += '</div></div>';
+    }
+
+    /* Improvements (already declared above) */
+    if (improvements.length > 0) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title good">\u2713 What Improved</div>';
+      improvements.forEach(function(imp) {
+        html += '<div class="iter-diff-item improved">' + escHtml(imp) + '</div>';
+      });
+      html += '</div>';
+    } else if (idx === 0) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title good">\u2713 Initial Draft</div>';
+      html += '<div class="iter-diff-item improved">First PRD draft generated from product idea analysis, debate synthesis, and scope priorities.</div>';
+      html += '</div>';
+    } else {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title note">\u2014 No clear improvements detected</div>';
+      html += '<div class="iter-diff-item info">The revision did not introduce measurable improvements over the previous version.</div>';
+      html += '</div>';
+    }
+
+    /* Remaining Issues (already declared above) */
+    if (remaining.length > 0) {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title bad">\u2717 Remaining Issues</div>';
+      remaining.forEach(function(iss) {
+        html += '<div class="iter-diff-item issue">' + escHtml(iss) + '</div>';
+      });
+      html += '</div>';
+    } else if (h.verdict === 'APPROVED') {
+      html += '<div class="iter-diff-section">';
+      html += '<div class="iter-diff-section-title good">\u2713 All issues resolved</div>';
+      html += '<div class="iter-diff-item improved">Quality Gate found no remaining critical issues.</div>';
+      html += '</div>';
+    }
+
+    /* Comparison summary */
+    if (idx > 0) {
+      html += '<div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;padding-top:0.4rem;border-top:1px solid var(--border)">';
+      html += 'Compared to Iteration ' + iterationState.history[idx-1].iteration + ': ';
+      if (scoreDelta > 0) html += '<span style="color:var(--success)">Score improved by ' + scoreDelta + ' point' + (scoreDelta>1?'s':'') + ' (' + prevScore + ' \u2192 ' + h.score + ')</span>';
+      else if (scoreDelta === 0) {
+        html += '<span style="color:var(--warning)">Score unchanged at ' + h.score + '/10</span>';
+        if (improvements.length > 0 && remaining.length > 0) {
+          html += ' <span style="color:var(--muted)">(' + improvements.length + ' improvement' + (improvements.length>1?'s':'') + ' offset by ' + remaining.length + ' remaining issue' + (remaining.length>1?'s':'') + ')</span>';
+        }
+      }
+      else html += '<span style="color:var(--danger)">Score would have dropped (best version kept)</span>';
+      html += '</div>';
+    }
+
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function toggleIterDiff(id) {
+  var body = document.getElementById(id);
+  var toggle = document.getElementById(id + '-toggle');
+  if (body) { body.classList.toggle('open'); }
+  if (toggle) { toggle.classList.toggle('open'); }
+}
+
+function escHtml(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+/* ═══════════════════════════════════════════
+   USER FEEDBACK SUBMISSION
+   ═══════════════════════════════════════════ */
+var feedbackRunning = false;
+var feedbackApproved = false; /* set true when feedback_complete indicates APPROVED */
+
+function submitFeedback() {
+  var fb = document.getElementById('feedbackText').value.trim();
+  if (!fb || feedbackRunning) return;
+  feedbackRunning = true;
+  feedbackApproved = false;
+  document.getElementById('feedbackText').disabled = true;
+  document.getElementById('feedbackBtn').disabled = true;
+  document.getElementById('feedbackBtn').textContent = 'Revising\u2026';
+  document.getElementById('feedbackStatus').textContent = 'Agents are revising the PRD based on your feedback\u2026';
+  document.getElementById('feedbackStatus').style.color = 'var(--muted)';
+
+  /* Scroll back to flowchart so user can watch agents working */
+  document.getElementById('flowArea').scrollIntoView({behavior:'smooth',block:'start'});
+
+  /* --- Guaranteed final cleanup — verifies DOM state --- */
+  function finalCleanup() {
+    console.log('[feedback] finalCleanup running. feedbackRunning=' + feedbackRunning + ', feedbackApproved=' + feedbackApproved);
+    feedbackRunning = false;
+    /* Always reset form controls */
+    document.getElementById('feedbackText').value = '';
+    document.getElementById('feedbackText').disabled = true;
+    document.getElementById('feedbackBtn').disabled = true;
+    document.getElementById('feedbackBtn').textContent = 'Submit Feedback & Re-iterate';
+    document.getElementById('feedbackPanel').classList.remove('visible');
+    deactivateFeedbackLoop();
+    document.querySelectorAll('.travel-dot').forEach(function(d){d.classList.remove('running');});
+
+    /* Check actual DOM state — if neither prompt nor next section is visible, force prompt */
+    var promptShowing = document.getElementById('feedbackPrompt').classList.contains('visible');
+    var nextShowing = document.getElementById('nextSection').classList.contains('visible');
+    if (!promptShowing && !nextShowing) {
+      console.warn('[feedback] Neither prompt nor next-section visible — forcing prompt');
+      document.getElementById('feedbackPrompt').classList.add('visible');
+      document.getElementById('feedbackPrompt').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+  }
+
+  /* Absolute timeout: if nothing happens in 3 minutes, force reset */
+  var feedbackSafetyTimer = setTimeout(function() {
+    console.warn('[feedback] Safety timer fired at 3min');
+    finalCleanup();
+  }, 180000);
+
+  fetch('/api/feedback', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({feedback: fb})
+  }).then(function(response) {
+    var reader = response.body.getReader(), dec = new TextDecoder();
+    var buf = '';
+
+    function processLines() {
+      var lines = buf.split('\n'); buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf('data: ') === 0) {
+          var raw = lines[i].slice(6);
+          var m = null;
+          try { m = JSON.parse(raw); } catch(e) { console.warn('[feedback SSE] JSON parse error on line: ', lines[i].substring(0,100)); continue; }
+          console.log('[feedback SSE] event=' + m.event + ' step=' + m.step);
+          try { handleEvent(m); } catch(e) { console.error('[feedback SSE] handleEvent error:', e, 'event:', m.event); }
+          if (m.event === 'feedback_complete' || m.event === 'fatal') {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function readStream() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          buf += '\n'; processLines();
+          return;
+        }
+        buf += dec.decode(result.value, {stream: true});
+        if (processLines()) return;
+        return readStream();
+      });
+    }
+
+    return readStream();
+  }).catch(function(err) {
+    console.error('[feedback] Fetch/stream error:', err);
+  }).then(function() {
+    /* ALWAYS runs after stream finishes. Wait 300ms then verify & clean up. */
+    clearTimeout(feedbackSafetyTimer);
+    setTimeout(finalCleanup, 300);
+  });
+}
+
+document.getElementById('feedbackText').addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'Enter') submitFeedback();
+});
+
+document.getElementById('idea').addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key==='Enter') startPipeline();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+</body>
+</html>
