@@ -33,7 +33,7 @@ import litellm
 CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "")
 os.environ["CEREBRAS_API_KEY"] = CEREBRAS_API_KEY
 
-MODEL = "cerebras/gpt-oss-120b"
+MODEL = "cerebras/llama3.1-8b"
 MAX_TOKENS = 4096              # default for most agents
 MAX_TOKENS_LONG = 8192         # for PRD-producing agents that need more room
 TEMPERATURE = 0.7

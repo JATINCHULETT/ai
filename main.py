@@ -9,14 +9,14 @@ if VENV_SITE not in sys.path:
 from crewai import Agent, Task, Crew, Process, LLM
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-os.environ.setdefault("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+os.environ.setdefault("CEREBRAS_API_KEY", os.environ.get("CEREBRAS_API_KEY", ""))
 os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ["CREWAI_TELEMETRY"] = "false"
 
-# ── LLM (Groq via litellm) ────────────────────────────────────────────────────
+# ── LLM (Llama on Cerebras via litellm) ───────────────────────────────────────
 llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
-    api_key=os.environ.get("GROQ_API_KEY", ""),
+    model="cerebras/llama3.1-8b",
+    api_key=os.environ.get("CEREBRAS_API_KEY", ""),
     temperature=0.7,
 )
 
