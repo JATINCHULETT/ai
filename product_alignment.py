@@ -197,7 +197,7 @@ def _call_llm(system_prompt, user_prompt, step_num=0, step_name="", on_event=Non
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    max_retries = 3
+    max_retries = 6
     for attempt in range(1, max_retries + 1):
         try:
             resp = litellm.completion(
@@ -209,10 +209,18 @@ def _call_llm(system_prompt, user_prompt, step_num=0, step_name="", on_event=Non
                 content = getattr(resp.choices[0].message, 'reasoning_content', '') or ''
             return content.strip()
         except Exception as e:
-            err = str(e).lower()
-            if "rate_limit" in err or "429" in err:
-                wait = 12 * attempt
-                msg = f"Rate-limited, retrying in {wait}s (attempt {attempt}/{max_retries})"
+            err = (type(e).__name__ + " " + str(e)).lower()
+            transient = any(
+                s in err
+                for s in (
+                    "rate_limit", "ratelimit", "429", "503",
+                    "high traffic", "try again soon", "too many requests",
+                    "over capacity", "temporarily unavailable",
+                )
+            )
+            if transient:
+                wait = min(180, 25 * (2 ** (attempt - 1)))
+                msg = f"API busy / rate-limited, retrying in {wait}s (attempt {attempt}/{max_retries})"
                 if on_event:
                     on_event("retry", step_num, step_name, msg)
                 print(f"   [!] {msg}")
